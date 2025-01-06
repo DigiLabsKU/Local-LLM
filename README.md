@@ -7,7 +7,7 @@ A completely local RAG pipeline allowing the user to be able to chat with their 
 * Setup conda environment: `conda create -n local-llm python=3.11.5`
 * Activate conda environment: `conda activate local-llm`
 * Install `uv`: `pip install uv`
-* Install PyTorch with CUDA (PyTorch)[https://pytorch.org/get-started/locally/]: 
+* Install PyTorch with CUDA [PyTorch](https://pytorch.org/get-started/locally/): 
     `pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
 
 * Install `marker-pdf`: `uv pip install marker-pdf` 
