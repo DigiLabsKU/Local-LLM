@@ -2,6 +2,16 @@
 
 A completely local RAG pipeline allowing the user to be able to chat with their documents, without any data being collected from third parties, such as LLM-API's or other libraries used. 
 
+## Build Instructions (Updated along the way)
+
+* Setup conda environment: `conda create -n local-llm python=3.11.5`
+* Activate conda environment: `conda activate local-llm`
+* Install `uv`: `pip install uv`
+* Install PyTorch with CUDA (PyTorch)[https://pytorch.org/get-started/locally/]: 
+    `pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
+
+* Install `marker-pdf`: `uv pip install marker-pdf` 
+
 ## Features
 
 * Completely private (hopefully this implies that we won't need internet connection to run this program)
