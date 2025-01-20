@@ -14,7 +14,8 @@ def create_vectorstore(embeddings_model_name: str, use_gpu: bool=False) -> FAISS
 
     # Create an in-memory faiss vectorstore
     index_flat = faiss.IndexFlatL2(dim)
-    if use_gpu:
+    if use_gpu and faiss.get_num_gpus() > 0:
+        print("Creating in-memory faiss vectorstore with GPU support")
         res = faiss.StandardGpuResources()
         gpu_index_flat = faiss.index_cpu_to_gpu(res, 0, index_flat)
     
@@ -39,7 +40,7 @@ def load_existing_vector_store(embeddings_model_name: str, store_path: str="fais
     embeddings_model = LocalEmbeddings(embeddings_model_name)
     faiss_store = FAISS.load_local(store_path, embeddings_model, allow_dangerous_deserialization=True)
     # Move to GPU if requested
-    if use_gpu:
+    if use_gpu and faiss.get_num_gpus() > 0:
         print("Transferring Loaded Index to GPU")
         res = faiss.StandardGpuRessources()
         gpu_index_flat = faiss.index_cpu_to_gpu(res, 0, faiss_store.index)
