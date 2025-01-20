@@ -11,7 +11,8 @@ A completely local RAG pipeline allowing the user to be able to chat with their 
 
     `pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
 
-* Install `marker-pdf`: `uv pip install marker-pdf` 
+* Install `marker-pdf`: `uv pip install marker-pdf`
+* Install `KeyBERT`: `uv pip install keybert`
 
 ## Features
 
