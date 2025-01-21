@@ -6,7 +6,7 @@ from langchain_community.docstore.in_memory import InMemoryDocstore
 from uuid import uuid4
 from langchain_core.documents import Document
 
-embeddings_model_name = "all-MiniLM-L6-v2"
+embeddings_model_name = "paraphrase-multilingual-mpnet-base-v2" # Multilingual model
 
 def create_vectorstore(embeddings_model_name: str, use_gpu: bool=False) -> FAISS:
     embeddings_model = LocalEmbeddings(embeddings_model_name)
@@ -47,30 +47,28 @@ def load_existing_vector_store(embeddings_model_name: str, store_path: str="fais
         faiss_store.index = gpu_index_flat
     return faiss_store
 
-def vector_store_pipeline(embeddings_model_name: str, llm_model: str, file_paths: list[str], enrich_method:str, store_path: str, use_gpu: bool=False) -> FAISS:
+def vectorstore_pipeline(embeddings_model_name: str, llm_model: str, file_paths: list[str], enrich_method:str, store_path: str, use_gpu: bool=False) -> FAISS:
     """
     Pipeline for creating a vector store using a local embeddings model, parsing documents, and adding them to the vector store.
     
-    Parameters
-    ----------
-    embeddings_model_name : str
-        The name of the local embeddings model to use.
-    llm_model : str
-        The name of the llm model to use for in the RAG.
-    file_paths : list[str]
-        The file paths of the PDFs to be parsed.
-    enrich_method : str
-        An optional string telling which method to use for enriching the chunks, i.e. "summarization" or "keywords". The latter is more cost-effective.
-    store_path : str
-        The path to save the faiss index after creation.
-    use_gpu : bool, optional
-        - If True, use GPU for vectorization.
-        - If False, use CPU for vectorization.
-        - Default: False
+    Args:
+        embeddings_model_name : str
+            The name of the local embeddings model to use.
+        llm_model : str
+            The name of the llm model to use for in the RAG.
+        file_paths : list[str]
+            The file paths of the PDFs to be parsed.
+        enrich_method : str
+            An optional string telling which method to use for enriching the chunks, i.e. "summarization" or "keywords". The latter is more cost-effective.
+        store_path : str
+            The path to save the faiss index after creation.
+        use_gpu : bool, optional
+            - If True, use GPU for vectorization.
+            - If False, use CPU for vectorization.
+            - Default: False
     
-    Returns
-    -------
-    A LangChain FAISS VectorStore loaded in the computers memory. 
+    Returns:
+        A LangChain FAISS VectorStore loaded in the computers memory. 
     """
     
     documents = parse_pipeline(file_paths, llm_model, enrich_method='keywords')

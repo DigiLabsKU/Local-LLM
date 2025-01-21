@@ -16,8 +16,3 @@ class LocalEmbeddings:
 
     def get_dimensions(self) -> int:
         return self.model.get_sentence_embedding_dimension() or len(self.embed_query("hello world"))
-
-
-
-# all-mpnet-base-v2 (large version)
-# all-MiniLM-L6-v2 (small version)
