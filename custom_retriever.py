@@ -1,19 +1,21 @@
 from typing import List, Dict, Any
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
-from langchain_ollama import OllamaLM
+from langchain_ollama.llms import OllamaLLM
 from langchain_community.vectorstores import FAISS
+import json
 
 class CustomRetriever(BaseRetriever):
 
     docs: List[Document]
     metadata_info: Dict[str, Any]
-    llm_model: OllamaLM
+    llm_model: OllamaLLM
     vectorstore: FAISS
     k: int = 5
+    verbose: bool = False
 
     @classmethod
-    def from_llm(cls, docs: List[Document], metadata_info: Dict[str, Any], llm_model: OllamaLM, vectorstore: FAISS, k: int=5):
+    def from_llm(cls, docs: List[Document], metadata_info: Dict[str, Any], llm_model: OllamaLLM, vectorstore: FAISS, k: int=5, verbose: bool=False):
         """
         Initializes a new instance of CustomRetriever from the required arguments. 
 
@@ -23,36 +25,58 @@ class CustomRetriever(BaseRetriever):
             llm_model (OllamaLM): Ollama language model for generating prompts.
             vectorstore (FAISS): Vectorstore for storing and searching for documents.
             k (int): Number of documents to return from the vectorstore.
+            verbose (bool): Whether to print verbose output.
 
         Returns:
             CustomRetriever: An instance of CustomRetriever initialized with the provided arguments.
         """
-        return cls(docs=docs, metadata_info=metadata_info, llm_model=llm_model, vectorstore=vectorstore, k=k)
+        return cls(docs=docs, metadata_info=metadata_info, llm_model=llm_model, vectorstore=vectorstore, k=k, verbose=verbose)
 
-    def construct_query(self, query: str, metadata_info: Dict[str, Any]) -> str:
+    def construct_query_and_filters(self, query: str, metadata_info: Dict[str, str]) -> tuple[str, Dict[str, str]]:
         """
-        Constructs a query based on the users input using an LLM Model.  
+        Constructs a query and extracts filters using the LLM, with detailed metadata context.
         
         Args:
-            query (str): The user query. 
-            metadata_info (Dict[str, Any]): Metadata information associated with the documents.
+            query (str): The user's input query.
+            metadata_info (Dict[str, Any]): Metadata fields and their descriptions with examples.
         
         Returns:
-            str: A query that can be used to query the VectorStore for relevant documents.
+            tuple[str, Dict[str, str]]: The constructed query and extracted filters.
         """
-        pass
 
-    def get_filters(self, query: str):
-        """
-        Uses an LLM model to retrieve the metadata information from the user query
+        # Format the metadata_info into a readable prompt section
+        metadata_details = "\n".join(
+            [f"{field}: {info}" for field, info in metadata_info.items()]
+        )
         
-        Args:
-            query (str): The user's query for metadata information.
+        # Create the prompt
+        prompt = (
+            f"Given the following query:\n\n{query}\n\n"
+            f"and the metadata fields and their descriptions:\n\n{metadata_details}\n\n"
+            f"Extract the following:\n"
+            f"1. A refined query for retrieving relevant documents.\n"
+            f"2. Any filters in the format of {{field: value}} that can help narrow down the search.\n\n"
+            f"Respond with the refined query and filters in JSON format as:\n"
+            f"{{'query': '<refined_query>', 'filters': {{'field1': 'value1', 'field2': 'value2'}}}}.\n"
+        )
         
-        Returns:
-            Dict[str, str]: A dictionary of filters to be passed into the VectorStore similarity search. 
-        """
-        pass
+        # Use the LLM to generate the response
+        response = self.llm_model.invoke(prompt)
+        if self.verbose:
+            print(f"Prompt sent to LLM:\n{prompt}")
+            print(f"Response from LLM:\n{response}")
+        
+        # Parse the response into structured data
+        try:
+            result = json.loads(response)  # Assuming the LLM returns well-formed JSON
+            refined_query = result.get("query", query)  # Default to the original query if missing
+            filters = result.get("filters", {})
+        except json.JSONDecodeError:
+            refined_query = query
+            filters = {}
+        
+        return refined_query, filters
+
 
 
     def _get_relevant_documents(self, query: str) -> List[Document]:
@@ -67,8 +91,7 @@ class CustomRetriever(BaseRetriever):
             List[Document]: A list containing up to k documents relevant to the user's query, filtered based on the metadata of the documents.
         """
 
-        generated_query = self.construct_query(query)
-        filters = self.get_filters(query)
+        generated_query, filters = self.construct_query_and_filters(query)
         results = self.vectorstore.similarity_search_with_score(generated_query, k=self.k, filter=filters)
         relevant_docs = []
         for doc, score in results:
