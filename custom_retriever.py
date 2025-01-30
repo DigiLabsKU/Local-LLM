@@ -1,28 +1,29 @@
 from typing import List, Dict, Any
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
-from langchain_ollama.llms import OllamaLLM
+from langchain_ollama import ChatOllama
 from langchain_community.vectorstores import FAISS
 import json
+import re
 
 class CustomRetriever(BaseRetriever):
 
     docs: List[Document]
     metadata_info: Dict[str, Any]
-    llm_model: OllamaLLM
+    llm_model: ChatOllama
     vectorstore: FAISS
     k: int = 5
     verbose: bool = False
 
     @classmethod
-    def from_llm(cls, docs: List[Document], metadata_info: Dict[str, Any], llm_model: OllamaLLM, vectorstore: FAISS, k: int=5, verbose: bool=False):
+    def from_llm(cls, docs: List[Document], metadata_info: Dict[str, Any], llm_model: ChatOllama, vectorstore: FAISS, k: int=5, verbose: bool=False):
         """
         Initializes a new instance of CustomRetriever from the required arguments. 
 
         Args:
             docs (List[Document]): List of documents to be used for retrieval. 
             metadata_info (Dict[str, Any]): Metadata information associated with the documents.
-            llm_model (OllamaLM): Ollama language model for generating prompts.
+            llm_model (ChatOllama): Ollama language model for generating prompts.
             vectorstore (FAISS): Vectorstore for storing and searching for documents.
             k (int): Number of documents to return from the vectorstore.
             verbose (bool): Whether to print verbose output.
@@ -51,14 +52,22 @@ class CustomRetriever(BaseRetriever):
         
         # Create the prompt
         prompt = (
-            f"Given the following query:\n\n{query}\n\n"
-            f"and the metadata fields and their descriptions:\n\n{metadata_details}\n\n"
-            f"Extract the following:\n"
-            f"1. A refined query for retrieving relevant documents.\n"
-            f"2. Any filters in the format of {{field: value}} that can help narrow down the search.\n\n"
-            f"Respond with the refined query and filters in JSON format as:\n"
-            f"{{'query': '<refined_query>', 'filters': {{'field1': 'value1', 'field2': 'value2'}}}}.\n"
+            f"You are an expert at extracting structured metadata filters from user queries.\n\n"
+            f"Given this query:\n"
+            f"Query: \"{query}\"\n\n"
+            f"Extract only the following metadata fields based on user intent:\n"
+            f"{json.dumps(metadata_info, indent=2)}\n\n"
+            f"Follow these rules:\n"
+            f"- Only return fields that exist in metadata_info.\n"
+            f"- Do NOT infer values that are not explicitly stated in the query.\n"
+            f"- Return the filters in **strict JSON format** (inside <<<JSON_START>>> and <<<JSON_END>>>).\n\n"
+            f"Example Output:\n"
+            f"<<<JSON_START>>>\n"
+            f"{{'filters': {{'page_id': 42, 'source': 'sample.pdf'}}}}\n"
+            f"<<<JSON_END>>>\n\n"
+            f"Now, extract the metadata filters from the given query."
         )
+
         
         # Use the LLM to generate the response
         response = self.llm_model.invoke(prompt)
@@ -66,16 +75,17 @@ class CustomRetriever(BaseRetriever):
             print(f"Prompt sent to LLM:\n{prompt}")
             print(f"Response from LLM:\n{response}")
         
-        # Parse the response into structured data
-        try:
-            result = json.loads(response)  # Assuming the LLM returns well-formed JSON
-            refined_query = result.get("query", query)  # Default to the original query if missing
-            filters = result.get("filters", {})
-        except json.JSONDecodeError:
-            refined_query = query
+        match = re.search(r'<<<JSON_START>>>(.*?)<<<JSON_END>>>', response, re.DOTALL)
+        if match:
+            json_data = match.group(1).strip()
+            try:
+                filters = json.loads(json_data)
+            except json.JSONDecodeError:
+                filters = {}
+        else:
             filters = {}
         
-        return refined_query, filters
+        return filters
 
 
 
@@ -91,10 +101,11 @@ class CustomRetriever(BaseRetriever):
             List[Document]: A list containing up to k documents relevant to the user's query, filtered based on the metadata of the documents.
         """
 
-        generated_query, filters = self.construct_query_and_filters(query)
-        results = self.vectorstore.similarity_search_with_score(generated_query, k=self.k, filter=filters)
+        filters = self.construct_query_and_filters(query, self.metadata_info)
+        results = self.vectorstore.similarity_search_with_score(query, k=self.k, filter=filters)
         relevant_docs = []
         for doc, score in results:
             if score > 0: # Ensuring somewhat similarity
+                print(doc)
                 relevant_docs.append(doc)
         return relevant_docs

@@ -4,7 +4,7 @@ from torch.cuda import is_available as gpu_is_available
 
 class LocalEmbeddings:
     def __init__(self, model):
-        self.model = SentenceTransformer(model)
+        self.model = SentenceTransformer("sentence-transformers/"+model)
         if gpu_is_available():
             self.model.cuda()
     

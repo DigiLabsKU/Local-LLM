@@ -22,7 +22,7 @@ def free_resources_doc_parser():
 
     print("Freed resources for Document Parser: Marker-Pdf, BERT Summarizer and KeyBERT")
 
-model_name = "gpt-4" #"meta-llama/Llama-2-7b-hf"
+model_name = "meta-llama/Llama-3.2-3B"
 
 def create_converter():
     

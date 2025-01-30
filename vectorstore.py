@@ -1,12 +1,10 @@
 from local_embeddings import LocalEmbeddings
-from doc_parser import parse_pipeline
+from doc_parser import parse_pipeline, free_resources_doc_parser
 import faiss
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from uuid import uuid4
 from langchain_core.documents import Document
-
-embeddings_model_name = "paraphrase-multilingual-mpnet-base-v2" # Multilingual model
 
 def create_vectorstore(embeddings_model_name: str, use_gpu: bool=False) -> FAISS:
     embeddings_model = LocalEmbeddings(embeddings_model_name)
@@ -36,7 +34,7 @@ def add_documents(vector_store, documents: Document, save: bool=False) -> None:
         vector_store.save_local('faiss_index')
 
 
-def load_existing_vector_store(embeddings_model_name: str, store_path: str="faiss_index", use_gpu: bool=False) -> FAISS:
+def load_existing_vectorstore(embeddings_model_name: str, store_path: str="faiss_index", use_gpu: bool=False) -> FAISS:
     embeddings_model = LocalEmbeddings(embeddings_model_name)
     faiss_store = FAISS.load_local(store_path, embeddings_model, allow_dangerous_deserialization=True)
     # Move to GPU if requested
@@ -74,6 +72,11 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model: str, file_paths:
     documents = parse_pipeline(file_paths, llm_model, enrich_method='keywords')
     vector_store = create_vectorstore(embeddings_model_name, use_gpu)
     add_documents(vector_store, documents, save=True)
+    
+    # Free memory
+    del documents
+    free_resources_doc_parser()
+
     return vector_store
 
 # # Test Load on CPU
