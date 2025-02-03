@@ -19,7 +19,7 @@ def create_vectorstore(embeddings_model_name: str, use_gpu: bool=False) -> FAISS
     
     # Langchain FAISS VectorStore
     vector_store = FAISS(
-        embedding_function=embeddings_model.embed_query,
+        embedding_function=embeddings_model,
         index=gpu_index_flat if use_gpu else index_flat,
         docstore=InMemoryDocstore(),
         index_to_docstore_id={},

@@ -57,15 +57,17 @@ class CustomRetriever(BaseRetriever):
             f"Query: \"{query}\"\n\n"
             f"Extract only the following metadata fields based on user intent:\n"
             f"{json.dumps(metadata_info, indent=2)}\n\n"
-            f"Follow these rules:\n"
-            f"- Only return fields that exist in metadata_info.\n"
-            f"- Do NOT infer values that are not explicitly stated in the query.\n"
-            f"- Return the filters in **strict JSON format** (inside <<<JSON_START>>> and <<<JSON_END>>>).\n\n"
-            f"Example Output:\n"
-            f"<<<JSON_START>>>\n"
-            f"{{'filters': {{'page_id': 42, 'source': 'sample.pdf'}}}}\n"
-            f"<<<JSON_END>>>\n\n"
-            f"Now, extract the metadata filters from the given query."
+            f"**Rules:**\n"
+            f"- Only extract values for keys explicitly listed in the metadata fields.\n"
+            f"- Do not infer new keys beyond those specified.\n"
+            f"- If a field is not present in the query, do not include it in the output.\n"
+            f"- Maintain the correct data type for each field (e.g., `page_id` should be an integer if applicable).\n\n"
+            f"**Example Queries and Expected Filter Formats:**\n"
+            f"- Query: 'Show me content from page 42'\n"
+            f"- Expected filter: {{'page_id': 42}}\n\n"
+            f"- Query: 'What does the article say about climate change?'\n"
+            f"- Expected filter: {{'keywords': ['climate change']}}\n\n"
+            f"Return a JSON object containing only the relevant metadata fields."
         )
 
         
@@ -73,21 +75,61 @@ class CustomRetriever(BaseRetriever):
         response = self.llm_model.invoke(prompt)
         if self.verbose:
             print(f"Prompt sent to LLM:\n{prompt}")
-            print(f"Response from LLM:\n{response}")
+            print(f"Response from LLM:\n{response.content}")
         
-        match = re.search(r'<<<JSON_START>>>(.*?)<<<JSON_END>>>', response, re.DOTALL)
-        if match:
-            json_data = match.group(1).strip()
+        return response.content
+
+    def process_llm_response(self, response):
+        """
+        Processes the LLM response and returns a structured data object containing the relevant metadata fields.
+        
+        Args:
+            response (str): The LLM response containing JSON object containing the relevant metadata fields.
+        
+        Returns:
+            Dict[str, Any]: A structured dictionary containing the filters used for comparison during simalirty search.
+        """
+
+        if(isinstance(response, str)):
             try:
-                filters = json.loads(json_data)
+                llm_response = json.loads(response)
             except json.JSONDecodeError:
-                filters = {}
-        else:
-            filters = {}
+                print("Error: Invalid JSON response from LLM")
+                return {}
         
-        return filters
+        # Only keep keys that in metadata_info and aren't None
+        cleaned_response = {key: value for key, value in llm_response.items() if key in self.metadata_info}
+        cleaned_response = {key: value for key, value in llm_response.items() if value is not None}
+        
+        # Ensure correct types
+        if "page_id" in cleaned_response:
+            try:
+                cleaned_response["page_id"] = int(cleaned_response["page_id"])
+            except (ValueError, TypeError):
+                del cleaned_response["page_id"]  # Remove if conversion fails
 
+        if "keywords" in cleaned_response:
+            if isinstance(cleaned_response["keywords"], str):
+                cleaned_response["keywords"] = [cleaned_response["keywords"]]  # Convert single string to list
+            elif not isinstance(cleaned_response["keywords"], list):
+                del cleaned_response["keywords"]  # Remove if invalid type
 
+            cleaned_response["keywords"] = [keyword.lower() for keyword in cleaned_response["keywords"]]
+        
+        # Convert to vectorstore filter format
+        filter_query = {key: {"$in": val} if isinstance(val, list) else val for key, val in cleaned_response.items()}
+        print(filter_query)
+
+        return cleaned_response, filter_query
+
+    def filter_documents_based_on_keywords(documents, query_keywords):
+        """Filters documents based on matching keywords."""
+        filtered_docs = []
+        for doc in documents:
+            doc_keywords = [keyword.lower() for keyword in doc.get('keywords', [])]  # Ensure lowercase matching
+            if any(query_keyword in doc_keyword for query_keyword in query_keywords for doc_keyword in doc_keywords):
+                filtered_docs.append(doc)
+        return filtered_docs
 
     def _get_relevant_documents(self, query: str) -> List[Document]:
         """
@@ -101,11 +143,11 @@ class CustomRetriever(BaseRetriever):
             List[Document]: A list containing up to k documents relevant to the user's query, filtered based on the metadata of the documents.
         """
 
-        filters = self.construct_query_and_filters(query, self.metadata_info)
-        results = self.vectorstore.similarity_search_with_score(query, k=self.k, filter=filters)
+        #llm_filters = self.construct_query_and_filters(query, self.metadata_info)
+        #filter_dict = self.process_llm_response(llm_filters)
+        results = self.vectorstore.similarity_search_with_score(query, k=self.k)
         relevant_docs = []
         for doc, score in results:
             if score > 0: # Ensuring somewhat similarity
-                print(doc)
                 relevant_docs.append(doc)
         return relevant_docs
