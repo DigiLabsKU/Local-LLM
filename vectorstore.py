@@ -45,14 +45,14 @@ def load_existing_vectorstore(embeddings_model_name: str, store_path: str="faiss
         faiss_store.index = gpu_index_flat
     return faiss_store
 
-def vectorstore_pipeline(embeddings_model_name: str, llm_model: str, file_paths: list[str], enrich_method:str, store_path: str, use_gpu: bool=False) -> FAISS:
+def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_paths: list[str], enrich_method:str, store_path: str, use_gpu: bool=False) -> FAISS:
     """
     Pipeline for creating a vector store using a local embeddings model, parsing documents, and adding them to the vector store.
     
     Args:
         embeddings_model_name : str
             The name of the local embeddings model to use.
-        llm_model : str
+        llm_model_name : str
             The name of the llm model to use for in the RAG.
         file_paths : list[str]
             The file paths of the PDFs to be parsed.
@@ -69,7 +69,7 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model: str, file_paths:
         A LangChain FAISS VectorStore loaded in the computers memory. 
     """
     
-    documents = parse_pipeline(file_paths, llm_model, enrich_method='keywords')
+    documents = parse_pipeline(file_paths, llm_model_name, enrich_method='keywords')
     vector_store = create_vectorstore(embeddings_model_name, use_gpu)
     add_documents(vector_store, documents, save=True)
     

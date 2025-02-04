@@ -1,18 +1,16 @@
 from langchain_ollama import ChatOllama
-from custom_retriever import CustomRetriever
 from local_embeddings import LocalEmbeddings
 from langgraph.graph import MessagesState, StateGraph, END
 from langchain.schema import Document
 from langchain_core.tools import tool
 from vectorstore import vectorstore_pipeline, load_existing_vectorstore
 from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.prebuilt import ToolNode, tools_condition
 import json
 import operator
-from typing_extensions import TypedDict
 from typing import List, Annotated
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.messages.base import BaseMessage
 
-from PIL import Image
 
 
 # Initialize components as before
@@ -22,7 +20,6 @@ llm = ChatOllama(
     model=llm_model_name,
     temperature=0.1,
     max_tokens=1000,
-    num_gpu=1,
 )
 
 llm_json = ChatOllama(
@@ -37,11 +34,11 @@ embeddings_model_name = "all-MiniLM-L6-v2"
 embeddings_model = LocalEmbeddings(embeddings_model_name)
 
 # Create a new vectorstore instance
-# vectorstore = vectorstore_pipeline(embeddings_model_name=embeddings_model_name,
-#                                   llm_model="meta-llama/Llama-3.2-3B",
-#                                   file_paths=["data/ComIt_MA_2022.pdf"],
-#                                   store_path="faiss_index",
-#                                   enrich_method="keywords")
+vectorstore = vectorstore_pipeline(embeddings_model_name=embeddings_model_name,
+                                  llm_model_name="meta-llama/Llama-3.2-3B",
+                                  file_paths=["data/ComIt_MA_2022.pdf"],
+                                  store_path="faiss_index",
+                                  enrich_method="keywords")
 # Load existing vectorstore
 
 vectorstore = load_existing_vectorstore(embeddings_model_name, "faiss_index", use_gpu=False)
@@ -53,23 +50,7 @@ metadata_info = {
 }
 
 # Retriever
-retriever = vectorstore.as_retriever(search_type="similarity_score_threshold", search_kwargs={'score_threshold': 0.1})
-
-### Router ###
-
-#Prompt
-router_instructions = """  
-You are an expert in determining whether a user query requires retrieval from a vectorstore or a direct response.  
-
-The vectorstore contains user-uploaded documents, which may cover any topic. If the user's query requires information that could be found in these documents, route it to the vectorstore.  
-
-For queries that are purely conversational, such as greetings ("Hi", "Hello") or casual questions ("How are you?"), and do not require knowledge from the documents, use direct-response.  
-
-Questions asking for **definitions** should generally be retrieved from the vectorstore, unless the term is universally known and unambiguous (e.g., "What is an apple?" or "Define water"). If there is **any uncertainty** about whether the term might have a specific meaning within the uploaded documents, route the query to the vectorstore.  
-
-Return a JSON object with a single key, `datasource`, set to either `"direct_response"` or `"vectorstore"` based on the user's query.  
-"""
-
+retriever = vectorstore.as_retriever(search_type="similarity")
 
 ### Retrieval Grader ###
 
@@ -98,7 +79,7 @@ Here is the context to use to answer the question:
 
 {context}
 
-Think carefully about the above context.
+The context is in markdown format. Think carefully about the above context.
 
 Now, review the user question: 
 
@@ -106,7 +87,7 @@ Now, review the user question:
 
 Provide an answer to this question using only the context above. 
 
-Keep the answer brief and concise. Don't repeat yourself.
+Keep the answer brief and concise. Don't repeat yourself. Format your answer in markdown. 
 
 Answer:""" 
 
@@ -145,15 +126,14 @@ answer_grader_prompt = """QUESTION: {question} \n\n FACTS: \n\n {documents} \n\n
 Return JSON with two keys, 'binary_score' is 'yes' or 'no' to indicate whether the STUDENT ANSWER is grounded in the FACTS and helps answer the QUESTION. And a key, explanation, that contains an explanation of the score.. 
 """
 
+
 ### Graph ###
 
-class GraphState(TypedDict):
+class GraphState(MessagesState):
     """
     Graph state is a dictionary that contains information we want to propogate to, and modify in, each graph node. 
     """
 
-    question: str # User question
-    generation: str # LLM Generation
     direct_response : str # Binary decision whether to retrieve documents or answer using already given context. 
     no_relevant_docs: int # Binary state if we no relevant documents for the questions were found. 
     max_retries : int # Max number of retries for generating an answer
@@ -174,8 +154,32 @@ def retrieve(state):
     """
 
     print("----RETRIEVAL----")
-    question = state["question"]
+    retriever_prompt = """You are an expert at crafting queries from conversational history in order to retrieve relevant documents from a vectorstore. 
 
+    Here is the conversation so far:
+
+    {conversation_history}
+
+    Based on the user's context, generate a concise and relevant query to retrieve the most appropriate documents from the vectorstore. The query should be based on the user's most recent message and the overall context of the conversation, avoiding irrelevant details.
+
+    Your output should be a JSON object with the following key:
+    - "query": A string that contains the query formulated from the conversation, which is suitable for retrieving documents from the vectorstore.
+
+    Ensure the query is direct, specific, and tightly related to the user's needs. Don't include unnecessary information.
+    """
+
+    conversation_history = "\n".join([
+        f"{message.type.capitalize()}: {message.content}"
+        for message in state["messages"]
+        if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
+    ])
+
+    retriever_prompt_formatted = retriever_prompt.format(conversation_history=conversation_history)
+    print(retriever_prompt_formatted)
+
+    response = llm_json.invoke(retriever_prompt_formatted)
+    question = json.loads(response.content)["query"]
+    print(question)
     docs = retriever.invoke(question)
     return {"documents" : docs}
 
@@ -191,7 +195,11 @@ def generate(state):
     """
 
     print("----GENERATE----")
-    question = state["question"]
+    question = None
+    for message in reversed(state["messages"]):
+        if message.type == "human":
+            question = message.content
+            break
     documents = state["documents"]
     loop_step = state.get("loop_step", 0)
 
@@ -199,7 +207,7 @@ def generate(state):
     docs_txt = format_docs(documents)
     rag_prompt_formatted = rag_prompt.format(context=docs_txt, question=question)
     generation = llm.invoke([HumanMessage(content=rag_prompt_formatted)])
-    return {"generation" : generation, "loop_step" : loop_step+1}
+    return {"messages" : [generation], "loop_step" : loop_step+1}
 
 def grade_documents(state):
     """
@@ -214,7 +222,12 @@ def grade_documents(state):
     """
 
     print("----CHECK DOCUMENT RELEVANCE TO THE QUESTION----")
-    question = state["question"]
+    question = None
+    for message in reversed(state["messages"]):
+        if message.type == "human":
+            question = message.content
+            break
+    
     documents = state["documents"]
 
     # Check each doc
@@ -250,8 +263,12 @@ def no_relevant_documents(state):
     """
 
     print("----DECISION : NO RELEVANT DOCUMENTS WERE FOUND----")
-    generation = {'content': "Sorry, could not find any information regarding your question in the provided document(s)"}
-    return {'generation' : generation}
+    no_relevant_docs_prompt = """ You performed a search in the vectorstore to retrieve relevant documents to the user query.
+    But no relevant documents were found. Please inform the user that you cannot answer this question, since there was no information available.
+    Keep you answer brief and concise. Use a maximum of two sentences. 
+    """
+    response = llm.invoke(no_relevant_docs_prompt)
+    return {'messages' : [response]}
 
 def direct_response(state):
     """
@@ -266,35 +283,96 @@ def direct_response(state):
 
     # Add memory later -> So we can either use the previous conversation knowledge to respond or respond directly to a purely conversational question such as "Hi", "How are you?" etc. 
     print("----DIRECT RESPONSE----")
-    question = state["question"]
-    rag_prompt_formatted = rag_prompt.format(context= "No Context : Respond to the user approriate to the question", question=question)
-    generation = llm.invoke([HumanMessage(content=rag_prompt_formatted)])
-    result = generation.content if generation.content != "" else "No response could be generated"
-    return {"generation" : generation}
+    # Prompt
+    rag_prompt = """
+    You are an helpful assistant built to have conversations with users. 
+
+    Here is the current conversation history:
+
+    {context}
+
+    Think carefully about the above context.
+
+    Now, review the user query: 
+
+    {question}
+
+    Respond appropriatly to the user's query using the current conversation history. Format your answer in markdown. 
+
+    Answer:""" 
+
+    conversation_history = "\n".join([
+        f"{message.type.capitalize()}: {message.content}"
+        for message in state["messages"]
+        if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
+    ])
+
+
+    rag_prompt_formatted = rag_prompt.format(context=conversation_history, question=state["messages"][-1].content)
+    print(rag_prompt_formatted)
+
+    response = llm.invoke(rag_prompt_formatted)
+    return {"messages" : [response]}
     
     
 # Edges 
 
-def route_question(state):
+def route_question(state: MessagesState):
     """
-    Route question to direct response or RAG
+    Route question to direct response or RAG based on the conversation history.
 
     Args: 
-        state (dict) : The current graph state
-        
+        state (MessagesState) : The current graph state containing conversation history.
+
     Returns:
-        str : Next node to call, either direct_response or retrieve
+        str : Next node to call, either "direct_response" or "vectorstore".
     """
 
     print("----ROUTE QUESTION----")
-    route_question = llm_json.invoke([SystemMessage(content=router_instructions)] + [HumanMessage(content=state["question"])])
-    source = json.loads(route_question.content)['datasource']
+
+    # Get full conversation history
+    conversation_history = "\n".join([
+        f"{message.type.capitalize()}: {message.content}"
+        for message in state["messages"]
+        if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
+    ])
+
+    ### ROUTER ###
+    router_prompt = """  
+    You are an expert in determining whether a user query requires retrieval from a vectorstore or a direct response.  
+
+    The vectorstore contains user-uploaded documents, which may cover any topic. If the user's query requires information that could be found in these documents, route it to the vectorstore.  
+
+    For queries that are purely conversational, such as greetings ("Hi", "Hello") or casual questions ("How are you?"), and do not require knowledge from the documents, use direct-response.  
+
+    Questions asking for **definitions** should generally be retrieved from the vectorstore, unless the term is universally known and unambiguous (e.g., "What is an apple?" or "Define water"). If there is **any uncertainty** about whether the term might have a specific meaning within the uploaded documents, route the query to the vectorstore. 
+    
+    The conversation history is:
+
+    {conversation_history}
+
+    Now, determine whether to route the user's query to the vectorstore or a direct response.
+
+    Return a JSON object with a single key, `datasource`, set to either `"direct_response"` or `"vectorstore"` based on the user's query.  
+    """
+
+
+
+    # Formatting prompt
+    formatted_prompt = router_prompt.format(conversation_history=conversation_history)
+    print(formatted_prompt)
+
+    # Get routing decision
+    route_decision = llm_json.invoke(formatted_prompt)
+    source = json.loads(route_decision.content)['datasource']
+
     if source == "direct_response":
         print("----ROUTING TO DIRECT_RESPONSE----")
         return "direct_response"
     elif source == "vectorstore":
         print("----ROUTING TO VECTORSTORE----")
         return "vectorstore"
+
 
 def decide_to_generate(state):
     """
@@ -308,7 +386,11 @@ def decide_to_generate(state):
     """
 
     print("----ASSESS GRADED DOCUMENTS----")
-    question = state["question"]
+    question = None
+    for message in reversed(state["messages"]):
+        if message.type == "human":
+            question = message.content
+            break
     no_relevant_docs = state["no_relevant_docs"]
     if no_relevant_docs:
         print("----NO RELEVANT DOCS WERE FOUND : INFORMING USER----")
@@ -329,13 +411,22 @@ def grade_generation_v_documents_and_question(state):
     """
 
     print("---CHECK ANSWER----")
-    question = state["question"]
+    question = None
+    for message in reversed(state["messages"]):
+        if message.type == "human":
+            question = message.content
+            break
     documents = state["documents"]
-    generation = state["generation"]
+    generation = None
+    for message in reversed(state["messages"]):
+        if message.type == "system" or (message.type == "ai" and not message.tool_calls):
+            generation = message.content
+            break
     max_retries = state.get("max_retries", 3) # Defaults to 3 if not provided
 
     # Formatting
-    answer_grader_prompt_formatted = answer_grader_prompt.format(question=question, documents=format_docs(documents), generation=generation.content)
+    answer_grader_prompt_formatted = answer_grader_prompt.format(question=question, documents=format_docs(documents), generation=generation)
+    print(answer_grader_prompt_formatted)
     result = llm_json.invoke([SystemMessage(content=answer_grader_instructions)] + [HumanMessage(content=answer_grader_prompt_formatted)])
     grade = json.loads(result.content)["binary_score"]
 
@@ -346,6 +437,8 @@ def grade_generation_v_documents_and_question(state):
         return "useful"
     elif state["loop_step"] <= max_retries: 
         print("----GENERATED ANSWER IS NOT GROUNDED IN DOCUMENTS OR DOES NOT ANSWER THE QUESTION----")
+        # Remove the answer from state["messages"]
+        state["messages"] = state["messages"][:-1]
         return "not useful"
     else:
         print("----MAX RETRIES REACHED : STOPPING RAG----")
@@ -391,21 +484,22 @@ workflow.add_conditional_edges(
         "max retries" : END,
     },
 )
+
+# Memory 
+memory = MemorySaver()
+config = {"configurable" : {"thread_id" : "local-rag"}}
+
 # Compile 
-graph = workflow.compile()
-
-with open("graph.png", "wb") as f:
-    f.write(graph.get_graph().draw_mermaid_png())
-
-
+graph = workflow.compile(checkpointer=memory)
 
 while True:
     query = input("Query: ")
     if query.lower() == "exit":
         break;
-    inputs = {"question" : query, "max_retries" : 3}
+    inputs = {"messages" : [{"role" : "user", "content" : query}], "max_retries" : 3}
     # for event in graph.stream(inputs, stream_mode="values"):
     #     print(event)
-    results = graph.invoke(inputs)
+    results = graph.invoke(inputs, config=config)
+    # get agent response
 
-    print(results['generation'].content)
+    print("Final Response: ", results["messages"][-1].content)

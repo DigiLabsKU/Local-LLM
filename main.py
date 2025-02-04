@@ -1,5 +1,4 @@
 import streamlit as st
-from rag import handle_user_query_with_graph
 from vectorstore import vectorstore_pipeline, load_existing_vectorstore
 from langchain_community.vectorstores import FAISS
 import os 
@@ -8,6 +7,9 @@ import tempfile
 def clear_conversation():
     st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
 
+
+llm_model_name = 
+embeddings_model_name = 
 
 if __name__ == '__main__':
 
@@ -103,7 +105,7 @@ if __name__ == '__main__':
         with st.chat_message("assistant"):
             with st.spinner('Please Wait...'):
                 try:
-                    response = handle_user_query_with_graph(prompt)
+                    response = None
                     if response.endswith("'''"):
                         response = response[:-3]
                     st.write(response)
@@ -111,5 +113,5 @@ if __name__ == '__main__':
                 except Exception as e:
                     st.error(f"Error generating response: {e}")
                     st.session_state.messages.append({'role': 'assistant', 'content': 'Sorry, I encountered an error.'})
-        else:
-            st.warning("Please upload files and/or load a vectorstore to begin.")
+    else:
+        st.warning("Please upload files and/or load a vectorstore to begin.")
