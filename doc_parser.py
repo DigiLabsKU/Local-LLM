@@ -153,16 +153,3 @@ def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None) ->
         documents.extend(enriched_chunks)
     
     return documents
-
-# # Test
-
-# files = ['data/ComIt_MA_2022.pdf']
-# documents = parse_pipeline(files, enrich_method="keywords")
-# print(len(documents))
-# print(documents[1].metadata['keywords'])
-
-# input_ = None
-# while input_!="quit":
-#     input_ = input("Enter something: ")
-#     if input_=="free":
-#         free_resources_doc_parser()

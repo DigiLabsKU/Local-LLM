@@ -78,7 +78,3 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_p
     free_resources_doc_parser()
 
     return vector_store
-
-# # Test Load on CPU
-# files = ['data/ComIt_MA_2022.pdf']
-# vec_store = vector_store_pipeline(embeddings_model_name, "gpt-4", files, "keywords", "faiss_index", False)

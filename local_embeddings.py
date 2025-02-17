@@ -18,3 +18,4 @@ class LocalEmbeddings(Embeddings):
 
     def get_dimensions(self) -> int:
         return self.model.get_sentence_embedding_dimension() or len(self.embed_query("hello world"))
+    
