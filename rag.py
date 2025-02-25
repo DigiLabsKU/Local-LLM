@@ -1,15 +1,18 @@
 from langchain_ollama import ChatOllama
 from local_embeddings import LocalEmbeddings
 from langgraph.graph import MessagesState, StateGraph, END
-from vectorstore import vectorstore_pipeline, load_existing_vectorstore
 from langchain_core.messages import HumanMessage, SystemMessage
 import json
 import operator
 from typing import List, Annotated
 from langgraph.checkpoint.memory import MemorySaver
+from model_configuration import get_settings_from_config
 
-# Initialize components as before
-llm_model_name = "llama3.2"
+# Configuration
+settings = get_settings_from_config()
+
+llm_model_name = settings["llm_model_name"]
+embeddings_model_name = settings["embeddings_model_name"]
 
 llm = ChatOllama(
     model=llm_model_name,
@@ -24,28 +27,7 @@ llm_json = ChatOllama(
     format="json",
 )
 
-embeddings_model_name = "paraphrase-multilingual-mpnet-base-v2"
 embeddings_model = LocalEmbeddings(embeddings_model_name)
-
-# Create a new vectorstore instance
-# vectorstore = vectorstore_pipeline(embeddings_model_name=embeddings_model_name,
-#                                   llm_model_name="meta-llama/Llama-3.2-3B",
-#                                   file_paths=["data/ComIt_MA_2022.pdf"],
-#                                   store_path="faiss_index",
-#                                   enrich_method="keywords")
-# Load existing vectorstore
-
-vectorstore = load_existing_vectorstore(embeddings_model_name, "faiss_index", use_gpu=False)
-
-metadata_info = {
-    "page_id": "The page number of the document or chunk.",
-    "source": "The source file (i.e., path) of the document.",
-    "keywords": "Topics extracted from the query, listed as a list of words."
-}
-
-
-# Retriever
-retriever = vectorstore.as_retriever(search_type="similarity")
 
 ### Retrieval Grader ###
 
@@ -68,23 +50,23 @@ Return JSON with single key, `binary_score`, that is "yes" or "no" score to indi
 
 # Prompt
 rag_prompt = """
-You are an assistant for question-answering tasks. You are built to have conversations with users regarding their uploaded documents. 
+You are an assistant specializing in question-answering based on provided documents. Your answers should be well-structured, informative, and formatted using Markdown.
 
-Here is the context to use to answer the question:
-
+### Context:
 {context}
 
-The context is in markdown format. Think carefully about the above context.
+### User Question:
+**{question}**
 
-Now, review the user QUESTION: 
+#### Your Answer:
+- Provide a clear and complete answer based **only** on the context above.
+- Format your response in **Markdown** (use bold for key points, bullet points for lists, and code blocks where appropriate).
+- Do not be overly brief; ensure completeness while remaining concise.
+- Avoid repetition and unnecessary padding.
 
-{question}
+**Final Answer:** 
+"""
 
-Provide an answer to this QUESTION using only the context above. 
-
-Keep the answer brief and concise. Don't repeat yourself. Format your answer in markdown. ALWAYS respond in the same language as ther user QUESTION. 
-
-Answer:""" 
 
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
@@ -138,50 +120,6 @@ class GraphState(MessagesState):
     question : str # User query translated to question
 
 # Nodes
-def retrieve(state : GraphState):
-    """
-    Retrieve documents from vectorstore.
-
-    Args: 
-        sate (GraphState) : The current graph state.
-
-    Returns: 
-        sate (GraphState) : New key added to state, documents, that contains retrieved documents. 
-    """
-
-    print("----RETRIEVAL----")
-    retriever_prompt = """You are an expert at crafting queries from conversational history in order to retrieve relevant documents from a vectorstore. 
-
-    Here is the conversation so far:
-
-    {conversation_history}
-
-    Based on the user's context, generate a concise and relevant query to retrieve the most appropriate documents from the vectorstore. The query should be based on the user's most recent message and the overall context of the conversation, avoiding irrelevant details.
-
-    Your output should be a JSON object with the following key:
-    - "query": A string that contains the query formulated from the conversation, which is suitable for retrieving documents from the vectorstore.
-    - "question": A string that contains a question formulated under the user's two most recent messages. 
-
-    Ensure the query is direct, specific, and tightly related to the user's needs. Don't include unnecessary information.
-    """
-
-    conversation_history = "\n".join([
-        f"{message.type.capitalize()}: {message.content}"
-        for message in state["messages"]
-        if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
-    ])
-
-    retriever_prompt_formatted = retriever_prompt.format(conversation_history=conversation_history)
-    #print(retriever_prompt_formatted)
-
-    response = llm_json.invoke(retriever_prompt_formatted)
-    query = json.loads(response.content)["query"]
-    question = json.loads(response.content)["question"]
-    print(query)
-    print(question)
-    docs = retriever.invoke(query)
-    return {"documents" : docs, "question" : question}
-
 def generate(state : GraphState):
     """
     Generates answer using RAG on retrieved documents. 
@@ -276,21 +214,24 @@ def direct_response(state : GraphState):
     print("----DIRECT RESPONSE----")
     # Prompt
     rag_prompt = """
-    You are an helpful assistant built to have conversations with users. 
+    You are a helpful assistant built to have natural conversations with users. You should provide clear, complete, and well-structured responses formatted in **Markdown**.
 
-    Here is the current conversation history:
-
+    ### Conversation History:
     {context}
 
-    Think carefully about the above context.
+    ### User Query:
+    **{question}**
 
-    Now, review the USERY QUERY: 
+    #### Your Response:
+    - Think carefully about the context before responding.
+    - Format your answer in **Markdown** (use bold for emphasis, bullet points for clarity, and headings where needed).
+    - Respond in the **same language** as the user query.
+    - Provide a full, well-structured response while remaining concise.
+    - You are allowed to use emojis when appropriate and needed.
 
-    {question}
+    **Final Answer:** 
+    """
 
-    Respond appropriatly to the user's query using the current conversation history. Format your answer in markdown. ALWAYS respond in the same language as the USER QUERY. 
-
-    Answer:""" 
 
     conversation_history = "\n".join([
         f"{message.type.capitalize()}: {message.content}"
@@ -300,7 +241,6 @@ def direct_response(state : GraphState):
 
 
     rag_prompt_formatted = rag_prompt.format(context=conversation_history, question=state["messages"][-1].content)
-    #print(rag_prompt_formatted)
 
     response = llm.invoke(rag_prompt_formatted)
     return {"messages" : [response]}
@@ -426,58 +366,110 @@ def grade_generation_v_documents_and_question(state: MessagesState):
         print("----MAX RETRIES REACHED : STOPPING RAG----")
         return "max retries"
 
-# Building Graph
-workflow = StateGraph(GraphState)
 
-# Define nodes
-workflow.add_node("respond_directly", direct_response)
-workflow.add_node("retrieve", retrieve)
-workflow.add_node("grade_documents", grade_documents)
-workflow.add_node("no_relevant_documents", no_relevant_documents)
-workflow.add_node("generate", generate)
-workflow.add_edge("respond_directly", END)
-workflow.add_edge("no_relevant_documents", END)
+def initialize_graph(vectorstore):
 
-# Build graph
-workflow.set_conditional_entry_point(
-    route_question,
-    {
-        "direct_response" : "respond_directly",
-        "vectorstore" : "retrieve",
-    },
-)
+    retriever = vectorstore.as_retriever(search_type="similarity")
 
-workflow.add_edge("retrieve", "grade_documents")
-workflow.add_conditional_edges(
-    "grade_documents",
-    decide_to_generate,
-    {
-        "no_relevant_documents" : "no_relevant_documents",
-        "generate" : "generate",
-    },
-)
+    def retrieve(state : GraphState):
+        """
+        Retrieve documents from vectorstore.
 
-workflow.add_conditional_edges(
-    "generate",
-    grade_generation_v_documents_and_question,
-    {
-        "not useful" : "generate",
-        "useful" : END,
-        "max retries" : END,
-    },
-)
+        Args: 
+            sate (GraphState) : The current graph state.
 
-# Memory 
-memory = MemorySaver()
-config = {"configurable" : {"thread_id" : "local-rag"}}
+        Returns: 
+            sate (GraphState) : New key added to state, documents, that contains retrieved documents. 
+        """
 
-# Compile 
-graph = workflow.compile(checkpointer=memory)
+        print("----RETRIEVAL----")
+        retriever_prompt = """You are an expert at crafting queries from conversational history in order to retrieve relevant documents from a vectorstore. 
 
-while True:
-    query = input("Query: ")
-    if query.lower() == "exit":
-        break;
-    inputs = {"messages" : [{"role" : "user", "content" : query}], "max_retries" : 3}
-    results = graph.invoke(inputs, config=config)
-    print("Final Response: ", results["messages"][-1].content)
+        Here is the conversation so far:
+
+        {conversation_history}
+
+        Based on the user's context, generate a concise and relevant query to retrieve the most appropriate documents from the vectorstore. The query should be based on the user's most recent message and the overall context of the conversation, avoiding irrelevant details.
+
+        Your output should be a JSON object with the following key:
+        - "query": A string that contains the query formulated from the conversation, which is suitable for retrieving documents from the vectorstore.
+        - "question": A string that contains a question formulated under the user's two most recent messages. 
+
+        Ensure the query is direct, specific, and tightly related to the user's needs. Don't include unnecessary information.
+        """
+
+        conversation_history = "\n".join([
+            f"{message.type.capitalize()}: {message.content}"
+            for message in state["messages"]
+            if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
+        ])
+
+        retriever_prompt_formatted = retriever_prompt.format(conversation_history=conversation_history)
+        #print(retriever_prompt_formatted)
+
+        response = llm_json.invoke(retriever_prompt_formatted)
+        query = json.loads(response.content)["query"]
+        question = json.loads(response.content)["question"]
+        print(query)
+        print(question)
+        docs = retriever.invoke(query)
+        return {"documents" : docs, "question" : question}
+
+
+    # Building Graph
+    workflow = StateGraph(GraphState)
+
+    # Define nodes
+    workflow.add_node("respond_directly", direct_response)
+    workflow.add_node("retrieve", retrieve)
+    workflow.add_node("grade_documents", grade_documents)
+    workflow.add_node("no_relevant_documents", no_relevant_documents)
+    workflow.add_node("generate", generate)
+    workflow.add_edge("respond_directly", END)
+    workflow.add_edge("no_relevant_documents", END)
+
+    # Build graph
+    workflow.set_conditional_entry_point(
+        route_question,
+        {
+            "direct_response" : "respond_directly",
+            "vectorstore" : "retrieve",
+        },
+    )
+
+    workflow.add_edge("retrieve", "grade_documents")
+    workflow.add_conditional_edges(
+        "grade_documents",
+        decide_to_generate,
+        {
+            "no_relevant_documents" : "no_relevant_documents",
+            "generate" : "generate",
+        },
+    )
+
+    workflow.add_conditional_edges(
+        "generate",
+        grade_generation_v_documents_and_question,
+        {
+            "not useful" : "generate",
+            "useful" : END,
+            "max retries" : END,
+        },
+    )
+
+    # Memory 
+    memory = MemorySaver()
+    config = {"configurable" : {"thread_id" : "local-rag"}}
+
+    # Compile 
+    graph = workflow.compile(checkpointer=memory)
+
+    return graph, config
+
+# while True:
+#     query = input("Query: ")
+#     if query.lower() == "exit":
+#         break;
+#     inputs = {"messages" : [{"role" : "user", "content" : query}], "max_retries" : 3}
+#     results = graph.invoke(inputs, config=config)
+#     print("Final Response: ", results["messages"][-1].content)

@@ -34,7 +34,7 @@ def add_documents(vector_store, documents: Document, save: bool=False) -> None:
         vector_store.save_local('faiss_index')
 
 
-def load_existing_vectorstore(embeddings_model_name: str, store_path: str="faiss_index", use_gpu: bool=False) -> FAISS:
+def load_vectorstore(embeddings_model_name: str, store_path: str="faiss_index", use_gpu: bool=False) -> FAISS:
     embeddings_model = LocalEmbeddings(embeddings_model_name)
     faiss_store = FAISS.load_local(store_path, embeddings_model, allow_dangerous_deserialization=True)
     # Move to GPU if requested
@@ -45,7 +45,7 @@ def load_existing_vectorstore(embeddings_model_name: str, store_path: str="faiss
         faiss_store.index = gpu_index_flat
     return faiss_store
 
-def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_paths: list[str], enrich_method:str, store_path: str, use_gpu: bool=False) -> FAISS:
+def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_paths: list[str], enrich_method:str, use_gpu: bool=False) -> FAISS:
     """
     Pipeline for creating a vector store using a local embeddings model, parsing documents, and adding them to the vector store.
     
@@ -58,8 +58,6 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_p
             The file paths of the PDFs to be parsed.
         enrich_method : str
             An optional string telling which method to use for enriching the chunks, i.e. "summarization" or "keywords". The latter is more cost-effective.
-        store_path : str
-            The path to save the faiss index after creation.
         use_gpu : bool, optional
             - If True, use GPU for vectorization.
             - If False, use CPU for vectorization.

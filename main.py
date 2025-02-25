@@ -1,117 +1,124 @@
 import streamlit as st
-from vectorstore import vectorstore_pipeline, load_existing_vectorstore
-from langchain_community.vectorstores import FAISS
-import os 
+import os
 import tempfile
+from vectorstore import vectorstore_pipeline, load_vectorstore
+from model_configuration import load_json, save_json
+from rag import initialize_graph
 
-def clear_conversation():
-    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+# File paths
+AVAILABLE_MODELS_FILE = "available_models.json"
+CONFIG_FILE = "config.json"
 
+# Load available models and config
+available_models = load_json(AVAILABLE_MODELS_FILE)
+config = load_json(CONFIG_FILE)
 
-llm_model_name = 
-embeddings_model_name = 
+# Get model options
+llm_models = list(available_models.get("llm_models", {}).keys())
+embeddings_models = list(available_models.get("embeddings_models", {}).keys())
 
-if __name__ == '__main__':
+# Initialize session state
+if 'llm_model' not in st.session_state or 'embeddings_model' not in st.session_state:
+    llm_model_from_config = config.get("llm_model", {})
+    embeddings_model_from_config = config.get("embeddings_model", {})
+    
+    if llm_model_from_config and embeddings_model_from_config:
+        st.session_state.llm_model = list(llm_model_from_config.keys())[0]
+        st.session_state.embeddings_model = list(embeddings_model_from_config.keys())[0]
+    else:
+        st.session_state.llm_model = llm_models[0] if llm_models else None
+        st.session_state.embeddings_model = embeddings_models[0] if embeddings_models else None
 
-    st.set_page_config(page_title='💬 Local RAG')
+if 'vectorstore_created' not in st.session_state:
+    st.session_state.vectorstore_created = False
 
-    with st.sidebar:
-        st.title('💬 Local RAG')
-        st.markdown("""
-        The following chatbot is a simple RAG application allowing users to chat with their documents completely offline and private. 
+# Sidebar UI
+with st.sidebar:
+    st.title("💬 Local RAG")
+    st.markdown("""Your document-based RAG chatbot. Select models, upload PDFs, and start chatting.""")
 
-        **How to Use:** 
-                    
-        Upload your documents here by either dragging them into the blue box below or using the file system. 
-        Once the documents have been parsed and loaded, type your question in the chatbox, and the chatbot will try to answer your questions using the provided documents. If you wish to start a new conversation, use the 'Clear Conversation' button below.
+    vectorstore_action = st.radio("Choose an action", ("Create Vectorstore", "Load Existing Vectorstore"))
+    
+    if vectorstore_action == "Create Vectorstore":
+        selected_llm_model = st.selectbox("🔹 Select LLM Model", llm_models, index=llm_models.index(st.session_state.llm_model))
+        selected_embeddings_model = st.selectbox("🔹 Select Embeddings Model", embeddings_models, index=embeddings_models.index(st.session_state.embeddings_model))
 
-        **Disclaimer:** While the chatbot strives for accuracy, it might not always be correct. Always refer to official sources for critical information.
-        """)
+        uploaded_files = st.file_uploader("📂 Upload PDFs", type=["pdf"], accept_multiple_files=True)
+    
+    else:
+        recent_llm = list(config.get("llm_model", {}).keys())[0]
+        recent_embeddings = config.get("embeddings_model", {}).get(st.session_state.embeddings_model, "")
+        st.write(f"🔹 **LLM Model:** {recent_llm}")
+        st.write(f"🔹 **Embeddings Model:** {recent_embeddings}")
+        uploaded_files = None
 
-        # File uploading logic
-        uploaded_files = st.file_uploader("Upload your documents (PDFs)", type=["pdf"], accept_multiple_files=True)
-
-        # Vectorstore management
-        if 'vectorstore' not in st.session_state:
-            st.session_state.vectorstore = None
-
-        if 'vectorstore_created' not in st.session_state:
-            st.session_state.vectorstore_created = False  # Flag to track if vectorstore is created
-
-        if uploaded_files and not st.session_state.vectorstore_created:
-            # Create a temporary directory
+    if vectorstore_action == "Create Vectorstore" and st.button("⚡ Create Vectorstore"):
+        config["llm_model"] = {selected_llm_model: available_models["llm_models"][selected_llm_model]}
+        config["embeddings_model"] = {selected_embeddings_model: available_models["embeddings_models"][selected_embeddings_model]}
+        save_json(CONFIG_FILE, config)
+        
+        if uploaded_files:
+            st.write("📄 Processing uploaded files...")
             temp_dir = tempfile.gettempdir()
-
             file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in uploaded_files]
             for uploaded_file, file_path in zip(uploaded_files, file_paths):
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-
-            # Create a vectorstore using the uploaded files
-            st.write("Processing uploaded files...")
-            embeddings_model_name = "all-MiniLM-L6-v2"  # Use the same embeddings model name as defined earlier
-            store_path = "faiss_index"
-
+            
             try:
                 st.session_state.vectorstore = vectorstore_pipeline(
-                    embeddings_model_name=embeddings_model_name,
-                    llm_model="meta-llama/Llama-3.2-3B",
+                    embeddings_model_name=selected_embeddings_model,
+                    llm_model_name=selected_llm_model,
                     file_paths=file_paths,
-                    enrich_method="keywords",
-                    store_path=store_path,
+                    enrich_method="keywords",  
                     use_gpu=False
                 )
-                st.session_state.vectorstore_created = True  # Mark the flag as True
-                st.write("Vectorstore created successfully!")
+                st.session_state.vectorstore_created = True
+                st.success("✅ Vectorstore created successfully!")
             except Exception as e:
-                st.error(f"Error creating vectorstore: {e}")  
+                st.error(f"❌ Error creating vectorstore: {e}")
+        else:
+            st.warning("⚠️ Please upload PDFs before creating a vectorstore.")
 
-        # Optionally load an existing vectorstore
-        load_existing = st.checkbox("Load existing vectorstore")
-        if load_existing and not st.session_state.vectorstore_created:
-            store_path = "faiss_index"
+    if vectorstore_action == "Load Existing Vectorstore" and not st.session_state.vectorstore_created:
+        try:
+            st.session_state.vectorstore = load_vectorstore(
+                embeddings_model_name=recent_embeddings,
+                store_path="faiss_index",
+                use_gpu=False
+            )
+            st.session_state.vectorstore_created = True
+            st.success("✅ Loaded existing vectorstore successfully!")
+        except FileNotFoundError:
+            st.error("❌ Vectorstore not found. Please create a vectorstore first.")
+        except Exception as e:
+            st.error(f"❌ Failed to load vectorstore: {e}")
+
+    # Initializing Graph
+    if st.session_state.vectorstore_created:
+        graph, config = initialize_graph(st.session_state.vectorstore)
+
+# Chat UI
+if 'messages' not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+if prompt := st.chat_input("💬 Type your message..."):
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    with st.chat_message("assistant"):
+        with st.spinner("⏳ Thinking..."):
             try:
-                st.session_state.vectorstore = load_existing_vectorstore(
-                    embeddings_model_name="all-MiniLM-L6-v2",
-                    store_path=store_path,
-                    use_gpu=False
-                )
-                st.session_state.vectorstore_created = True  # Mark the flag as True
-                st.write("Loaded existing vectorstore successfully!")
+                inputs = {"messages": [{"role": "user", "content": prompt}], "max_retries": 3}
+                response = results = graph.invoke(inputs, config=config)
+                bot_reply = response["messages"][-1].content
+                st.write(bot_reply)
+                st.session_state.messages.append({"role": "assistant", "content": bot_reply})
             except Exception as e:
-                st.error(f"Failed to load vectorstore: {e}")
-
-        # Clear conversation button
-        st.button('Clear Conversation', on_click=clear_conversation)
-
-    # Initialize conversation state if not already done
-    if 'messages' not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
-
-
-    # Display conversation
-    for message in st.session_state.messages:
-        with st.chat_message(message['role']):
-            st.markdown(message['content'])
-
-    # Get user input
-    if prompt := st.chat_input('Your message...'):
-        # Display user input
-        with st.chat_message('user'):
-            st.markdown(prompt)
-        st.session_state.messages.append({'role': 'user', 'content': prompt})
-
-        # Generate and display bot response
-        with st.chat_message("assistant"):
-            with st.spinner('Please Wait...'):
-                try:
-                    response = None
-                    if response.endswith("'''"):
-                        response = response[:-3]
-                    st.write(response)
-                    st.session_state.messages.append({'role': 'assistant', 'content': response})
-                except Exception as e:
-                    st.error(f"Error generating response: {e}")
-                    st.session_state.messages.append({'role': 'assistant', 'content': 'Sorry, I encountered an error.'})
-    else:
-        st.warning("Please upload files and/or load a vectorstore to begin.")
+                st.error(f"❌ Error generating response: {e}")
+                st.session_state.messages.append({"role": "assistant", "content": "Sorry, I encountered an error."})

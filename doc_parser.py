@@ -62,6 +62,10 @@ def parse_pdf(converter: PdfConverter, filename: str, **kwargs) -> tuple[str, li
     return text, cleaned_metadata, images
 
 
+def parse_pdf_llama():
+    pass
+
+
 def token_len_fn(model_name: str):
     tokenizer = tiktoken.get_encoding('cl100k_base') if "gpt" in model_name else AutoTokenizer.from_pretrained(model_name)
     if "gpt" in model_name:
@@ -123,7 +127,7 @@ def enrich_chunks(documents, metadata, enrich_method=None):
             doc.metadata['summary'] = summary
     return documents
 
-def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None) -> list[Document]:
+def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, parsing_method=["local", "llama_index"]) -> list[Document]:
     """
     Parses and chunks a list of PDF files using the provided converter and enrichment method.
     
@@ -143,13 +147,17 @@ def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None) ->
 
     """
 
-    documents = []
-    converter = create_converter()
-    token_fn = token_len_fn(model_name)
-    for fname in files:
-        text, cleaned_metadata, _ = parse_pdf(converter, fname)
-        chunked_text = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
-        enriched_chunks = enrich_chunks(chunked_text, cleaned_metadata, enrich_method=enrich_method)
-        documents.extend(enriched_chunks)
-    
+    if parsing_method == "local": 
+        documents = []
+        converter = create_converter()
+        token_fn = token_len_fn(model_name)
+        for fname in files:
+            text, cleaned_metadata, _ = parse_pdf(converter, fname)
+            chunked_text = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
+            enriched_chunks = enrich_chunks(chunked_text, cleaned_metadata, enrich_method=enrich_method)
+            documents.extend(enriched_chunks)
+    else:
+        # TODO: Implement LLM parsing method using LLama Index
+        pass
+
     return documents

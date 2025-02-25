@@ -6,7 +6,8 @@ from langchain_core.embeddings.embeddings import Embeddings
 
 class LocalEmbeddings(Embeddings):
     def __init__(self, model):
-        self.model = SentenceTransformer("sentence-transformers/"+model)
+        self.model_name = model
+        self.model = SentenceTransformer(model)
         if gpu_is_available():
             self.model.cuda()
     
@@ -14,6 +15,9 @@ class LocalEmbeddings(Embeddings):
         return [self.model.encode(text).tolist() for text in texts]
     
     def embed_query(self, query: str) -> List[float]:
+        if self.model_name == "intfloat/multilingual-e5-large-instruct":
+            task_description = "Given the following query, retrieve relevant passages that answer the query"
+            query = f"Instruct: {task_description}\nQuery: {query}"
         return self.model.encode(query).tolist()
 
     def get_dimensions(self) -> int:
