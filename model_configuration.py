@@ -13,22 +13,6 @@ def save_json(file_path, data):
     with open(file_path, "w") as f:
         json.dump(data, f, indent=4)
 
-def select_model(models, model_type):
-    """Prompts the user to select a model from available options."""
-    print(f"\nAvailable {model_type} models:")
-    for idx, model in enumerate(models, 1):
-        print(f"{idx}. {model}")
-    
-    while True:
-        try:
-            choice = int(input(f"\nSelect a {model_type} model (1-{len(models)}): ")) - 1
-            if 0 <= choice < len(models):
-                return models[choice]
-        except ValueError:
-            pass
-        print("Invalid choice, please try again.")
-
-
 def get_settings_from_config():
     """Retrieve model names and other settings from config.json."""
     # Load available models and config
@@ -40,14 +24,13 @@ def get_settings_from_config():
     # Handle LLM model selection
     llm_model_key = config.get("llm_model")
     if llm_model_key and isinstance(llm_model_key, dict):
-        model_name = next(iter(llm_model_key))  # Extract the model key (e.g., "llama3.1-8B")
+        model_name = next(iter(llm_model_key))
 
         if "gpt" in model_name:
             llm_model_name = model_name  # Directly use GPT model name
         else:
-            # Get the model name from available_models.json, checking both "huggingface" and "ollama"
-            llm_model_name = available_models["llm_models"].get(model_name, {}).get("ollama") or \
-                             available_models["llm_models"].get(model_name, {}).get("huggingface") or \
+            # Get the model name from available_models.json  "huggingface"
+            llm_model_name = available_models["llm_models"].get(model_name, {}).get("huggingface") or \
                              model_name  # Fallback to original model name
         
         settings["llm_model_name"] = llm_model_name
@@ -58,7 +41,7 @@ def get_settings_from_config():
         embeddings_model_name = next(iter(embeddings_model_key))  # Extract model key
         settings["embeddings_model_name"] = available_models["embeddings_models"].get(embeddings_model_name, embeddings_model_name)
     
-    elif isinstance(embeddings_model_key, str):  # Ensure direct string values are handled
+    elif isinstance(embeddings_model_key, str):  
         settings["embeddings_model_name"] = available_models["embeddings_models"].get(embeddings_model_key, embeddings_model_key)
 
     # Add all other settings from config.json
@@ -67,6 +50,3 @@ def get_settings_from_config():
             settings[key] = value
 
     return settings
-
-
-

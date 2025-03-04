@@ -3,7 +3,6 @@ from typing import List
 from torch.cuda import is_available as gpu_is_available
 from langchain_core.embeddings.embeddings import Embeddings
 
-
 class LocalEmbeddings(Embeddings):
     def __init__(self, model):
         self.model_name = model
@@ -22,4 +21,3 @@ class LocalEmbeddings(Embeddings):
 
     def get_dimensions(self) -> int:
         return self.model.get_sentence_embedding_dimension() or len(self.embed_query("hello world"))
-    

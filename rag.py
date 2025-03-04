@@ -1,33 +1,51 @@
-from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from local_embeddings import LocalEmbeddings
 from langgraph.graph import MessagesState, StateGraph, END
 from langchain_core.messages import HumanMessage, SystemMessage
 import json
 import operator
 from typing import List, Annotated
-from langgraph.checkpoint.memory import MemorySaver
 from model_configuration import get_settings_from_config
+import re
+import torch
 
 # Configuration
 settings = get_settings_from_config()
-
 llm_model_name = settings["llm_model_name"]
 embeddings_model_name = settings["embeddings_model_name"]
 
-llm = ChatOllama(
-    model=llm_model_name,
-    temperature=0.1,
-    max_tokens=1000,
-)
+if "gpt" in llm_model_name:
+    llm = ChatOpenAI(
+        model=llm_model_name,
+        temperature=0.1,
+        max_tokens=1000,
+    )
+else:
+    tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
+    model = AutoModelForCausalLM.from_pretrained(llm_model_name,torch_dtype=torch.float16).to("cuda")
 
-llm_json = ChatOllama(
-    model=llm_model_name,
-    temperature=0.1,
-    max_tokens=1000,
-    format="json",
-)
+    pipe = pipeline(
+        "text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        max_new_tokens=512,
+        temperature=0.2,
+        pad_token_id=tokenizer.eos_token_id,
+        device=0,
+    )
 
-embeddings_model = LocalEmbeddings(embeddings_model_name)
+    l = HuggingFacePipeline(pipeline=pipe)
+    llm = ChatHuggingFace(
+        llm=l
+    )
+
+# Load Embeddings Model
+if "text-embedding-3" in embeddings_model_name:
+    embeddings_model = OpenAIEmbeddings(model=embeddings_model_name)
+else:
+    embeddings_model = LocalEmbeddings(embeddings_model_name)
 
 ### Retrieval Grader ###
 
@@ -67,9 +85,15 @@ You are an assistant specializing in question-answering based on provided docume
 **Final Answer:** 
 """
 
-
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
+
+def clean_response(response):
+    match = re.search(r'```json(.*?)```', response.content, re.DOTALL)
+    if match:
+        cleaned_response = match.group(1).strip()
+        response.content = cleaned_response
+    return response
 
 ### Answer Grader ###
 
@@ -140,6 +164,7 @@ def generate(state : GraphState):
     docs_txt = format_docs(documents)
     rag_prompt_formatted = rag_prompt.format(context=docs_txt, question=question)
     generation = llm.invoke([HumanMessage(content=rag_prompt_formatted)])
+    print(generation)
     return {"messages" : [generation], "loop_step" : loop_step+1}
 
 def grade_documents(state : GraphState):
@@ -164,8 +189,10 @@ def grade_documents(state : GraphState):
     no_relevant_docs = 0
     for doc in documents: 
         doc_grader_prompt_formatted = doc_grader_prompt.format(document=doc.page_content, question=question)
-        result = llm_json.invoke([SystemMessage(content=doc_grader_instructions)] + [HumanMessage(content=doc_grader_prompt_formatted)])
-        grade = json.loads(result.content)["binary_score"]
+        result = llm.invoke([SystemMessage(content=doc_grader_instructions)] + [HumanMessage(content=doc_grader_prompt_formatted)])
+        print(result)
+        response = clean_response(result)
+        grade = json.loads(response.content)["binary_score"]
         # Document relevant
         if grade.lower() == "yes":
             print("----GRADE: DOCUMENT RELEVANT----")
@@ -197,6 +224,7 @@ def no_relevant_documents(state : GraphState):
     Keep your answer brief and concise. Use a maximum of two sentences. 
     """
     response = llm.invoke(no_relevant_docs_prompt)
+    print(response)
     return {'messages' : [response]}
 
 def direct_response(state : GraphState):
@@ -224,8 +252,8 @@ def direct_response(state : GraphState):
 
     #### Your Response:
     - Think carefully about the context before responding.
-    - Format your answer in **Markdown** (use bold for emphasis, bullet points for clarity, and headings where needed).
-    - Respond in the **same language** as the user query.
+    - Format your answer in **Markdown**.
+    - You should always respond in the same language as the User Query, e.g. English or Danish primarily. 
     - Provide a full, well-structured response while remaining concise.
     - You are allowed to use emojis when appropriate and needed.
 
@@ -239,15 +267,16 @@ def direct_response(state : GraphState):
         if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
     ])
 
+    print(conversation_history)
+
 
     rag_prompt_formatted = rag_prompt.format(context=conversation_history, question=state["messages"][-1].content)
-
+    print(rag_prompt_formatted)
     response = llm.invoke(rag_prompt_formatted)
+    print(response)
     return {"messages" : [response]}
     
-    
 # Edges 
-
 def route_question(state: MessagesState):
     """
     Route question to direct response or RAG based on the conversation history.
@@ -281,9 +310,10 @@ def route_question(state: MessagesState):
     If the query is in a non-English language, determine if it's conversational or requires retrieval. If it is conversational (like greetings or small talk), route it to a direct response regardless of the language. If the query seems to require more specific knowledge (e.g., a complex question or one that may be discussed in the documents), route it to the vectorstore.
 
     The conversation history is:
-
+    -------------------------
     {conversation_history}
-
+    -------------------------
+    The last response query by the Human is the user's query, in the conversation history above. 
     Now, determine whether to route the user's query to the vectorstore or a direct response.
 
     Return a JSON object with a single key, `datasource`, set to either `"direct_response"` or `"vectorstore"` based on the user's query.
@@ -291,11 +321,14 @@ def route_question(state: MessagesState):
 
     # Formatting prompt
     formatted_prompt = router_prompt.format(conversation_history=conversation_history)
-    #print(formatted_prompt)
+    print(formatted_prompt)
 
     # Get routing decision
-    route_decision = llm_json.invoke(formatted_prompt)
-    source = json.loads(route_decision.content)['datasource']
+    route_decision = llm.invoke(formatted_prompt)
+    print(route_decision)
+    response = clean_response(route_decision)
+    print(response)
+    source = json.loads(response.content)['datasource']
 
     if source == "direct_response":
         print("----ROUTING TO DIRECT_RESPONSE----")
@@ -303,7 +336,6 @@ def route_question(state: MessagesState):
     elif source == "vectorstore":
         print("----ROUTING TO VECTORSTORE----")
         return "vectorstore"
-
 
 def decide_to_generate(state : GraphState):
     """
@@ -349,8 +381,10 @@ def grade_generation_v_documents_and_question(state: MessagesState):
     # Formatting
     answer_grader_prompt_formatted = answer_grader_prompt.format(question=question, documents=format_docs(documents), generation=generation)
     #print(answer_grader_prompt_formatted)
-    result = llm_json.invoke([SystemMessage(content=answer_grader_instructions)] + [HumanMessage(content=answer_grader_prompt_formatted)])
-    grade = json.loads(result.content)["binary_score"]
+    result = llm.invoke([SystemMessage(content=answer_grader_instructions)] + [HumanMessage(content=answer_grader_prompt_formatted)])
+    print(result)
+    response = clean_response(result)
+    grade = json.loads(response.content)["binary_score"]
 
     # Check answer
     if grade == "yes":
@@ -366,8 +400,7 @@ def grade_generation_v_documents_and_question(state: MessagesState):
         print("----MAX RETRIES REACHED : STOPPING RAG----")
         return "max retries"
 
-
-def initialize_graph(vectorstore):
+def initialize_graph(vectorstore, memory):
 
     retriever = vectorstore.as_retriever(search_type="similarity")
 
@@ -407,9 +440,11 @@ def initialize_graph(vectorstore):
         retriever_prompt_formatted = retriever_prompt.format(conversation_history=conversation_history)
         #print(retriever_prompt_formatted)
 
-        response = llm_json.invoke(retriever_prompt_formatted)
-        query = json.loads(response.content)["query"]
-        question = json.loads(response.content)["question"]
+        response = llm.invoke(retriever_prompt_formatted)
+        cleaned_response = clean_response(response)
+        print(response)
+        query = json.loads(cleaned_response.content)["query"]
+        question = json.loads(cleaned_response.content)["question"]
         print(query)
         print(question)
         docs = retriever.invoke(query)
@@ -458,18 +493,9 @@ def initialize_graph(vectorstore):
     )
 
     # Memory 
-    memory = MemorySaver()
     config = {"configurable" : {"thread_id" : "local-rag"}}
 
     # Compile 
     graph = workflow.compile(checkpointer=memory)
 
     return graph, config
-
-# while True:
-#     query = input("Query: ")
-#     if query.lower() == "exit":
-#         break;
-#     inputs = {"messages" : [{"role" : "user", "content" : query}], "max_retries" : 3}
-#     results = graph.invoke(inputs, config=config)
-#     print("Final Response: ", results["messages"][-1].content)

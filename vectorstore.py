@@ -1,4 +1,5 @@
 from local_embeddings import LocalEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from doc_parser import parse_pipeline, free_resources_doc_parser
 import faiss
 from langchain_community.vectorstores import FAISS
@@ -7,8 +8,12 @@ from uuid import uuid4
 from langchain_core.documents import Document
 
 def create_vectorstore(embeddings_model_name: str, use_gpu: bool=False) -> FAISS:
-    embeddings_model = LocalEmbeddings(embeddings_model_name)
-    dim = embeddings_model.get_dimensions()
+    if "text-embedding-3" in embeddings_model_name:
+        embeddings_model = OpenAIEmbeddings(model=embeddings_model_name)
+        dim = len(embeddings_model.embed_query("Hello"))
+    else:
+        embeddings_model = LocalEmbeddings(embeddings_model_name)
+        dim = embeddings_model.get_dimensions()
 
     # Create an in-memory faiss vectorstore
     index_flat = faiss.IndexFlatL2(dim)
@@ -33,9 +38,11 @@ def add_documents(vector_store, documents: Document, save: bool=False) -> None:
     if save:
         vector_store.save_local('faiss_index')
 
-
 def load_vectorstore(embeddings_model_name: str, store_path: str="faiss_index", use_gpu: bool=False) -> FAISS:
-    embeddings_model = LocalEmbeddings(embeddings_model_name)
+    if "text-embedding-3" in embeddings_model_name:
+        embeddings_model = OpenAIEmbeddings(model=embeddings_model_name)
+    else:
+        embeddings_model = LocalEmbeddings(embeddings_model_name)
     faiss_store = FAISS.load_local(store_path, embeddings_model, allow_dangerous_deserialization=True)
     # Move to GPU if requested
     if use_gpu and faiss.get_num_gpus() > 0:
@@ -45,7 +52,7 @@ def load_vectorstore(embeddings_model_name: str, store_path: str="faiss_index", 
         faiss_store.index = gpu_index_flat
     return faiss_store
 
-def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_paths: list[str], enrich_method:str, use_gpu: bool=False) -> FAISS:
+def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_paths: list[str], enrich_method:str, parsing_method = ["local", "llama_index"], use_gpu: bool=False) -> FAISS:
     """
     Pipeline for creating a vector store using a local embeddings model, parsing documents, and adding them to the vector store.
     
@@ -67,12 +74,13 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_p
         A LangChain FAISS VectorStore loaded in the computers memory. 
     """
     
-    documents = parse_pipeline(file_paths, llm_model_name, enrich_method='keywords')
+    documents = parse_pipeline(file_paths, llm_model_name, enrich_method='keywords', parsing_method=parsing_method)
     vector_store = create_vectorstore(embeddings_model_name, use_gpu)
     add_documents(vector_store, documents, save=True)
     
     # Free memory
     del documents
-    free_resources_doc_parser()
+    if parsing_method == 'local':
+        free_resources_doc_parser()
 
     return vector_store
