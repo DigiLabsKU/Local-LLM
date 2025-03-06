@@ -1,6 +1,5 @@
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from langchain_ollama import ChatOllama
 from local_embeddings import LocalEmbeddings
 from langgraph.graph import MessagesState, StateGraph, END
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -22,23 +21,23 @@ if "gpt" in llm_model_name:
         temperature=0.1,
         max_tokens=1000,
     )
+    llm_json = ChatOpenAI(
+        model=llm_model_name,
+        temperature=0.1,
+        max_tokens=1000,
+        model_kwargs={"response_format" : {"type" : "json_object"}})
+    
 else:
-    tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
-    model = AutoModelForCausalLM.from_pretrained(llm_model_name,torch_dtype=torch.float16).to("cuda")
-
-    pipe = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        max_new_tokens=512,
-        temperature=0.2,
-        pad_token_id=tokenizer.eos_token_id,
-        device=0,
+    llm = ChatOllama(
+        model=llm_model_name,
+        temperature=0.1,
+        max_tokens=1000,
     )
-
-    l = HuggingFacePipeline(pipeline=pipe)
-    llm = ChatHuggingFace(
-        llm=l
+    llm_json = ChatOllama(
+        model=llm_model_name,
+        temperature=0.1,
+        max_tokens=1000,
+        format="json"
     )
 
 # Load Embeddings Model
@@ -189,10 +188,8 @@ def grade_documents(state : GraphState):
     no_relevant_docs = 0
     for doc in documents: 
         doc_grader_prompt_formatted = doc_grader_prompt.format(document=doc.page_content, question=question)
-        result = llm.invoke([SystemMessage(content=doc_grader_instructions)] + [HumanMessage(content=doc_grader_prompt_formatted)])
-        print(result)
-        response = clean_response(result)
-        grade = json.loads(response.content)["binary_score"]
+        result = llm_json.invoke([SystemMessage(content=doc_grader_instructions)] + [HumanMessage(content=doc_grader_prompt_formatted)])
+        grade = json.loads(result.content)["binary_score"]
         # Document relevant
         if grade.lower() == "yes":
             print("----GRADE: DOCUMENT RELEVANT----")
@@ -324,11 +321,8 @@ def route_question(state: MessagesState):
     print(formatted_prompt)
 
     # Get routing decision
-    route_decision = llm.invoke(formatted_prompt)
-    print(route_decision)
-    response = clean_response(route_decision)
-    print(response)
-    source = json.loads(response.content)['datasource']
+    route_decision = llm_json.invoke(formatted_prompt)
+    source = json.loads(route_decision.content)['datasource']
 
     if source == "direct_response":
         print("----ROUTING TO DIRECT_RESPONSE----")
@@ -381,10 +375,8 @@ def grade_generation_v_documents_and_question(state: MessagesState):
     # Formatting
     answer_grader_prompt_formatted = answer_grader_prompt.format(question=question, documents=format_docs(documents), generation=generation)
     #print(answer_grader_prompt_formatted)
-    result = llm.invoke([SystemMessage(content=answer_grader_instructions)] + [HumanMessage(content=answer_grader_prompt_formatted)])
-    print(result)
-    response = clean_response(result)
-    grade = json.loads(response.content)["binary_score"]
+    result = llm_json.invoke([SystemMessage(content=answer_grader_instructions)] + [HumanMessage(content=answer_grader_prompt_formatted)])
+    grade = json.loads(result.content)["binary_score"]
 
     # Check answer
     if grade == "yes":
@@ -440,11 +432,10 @@ def initialize_graph(vectorstore, memory):
         retriever_prompt_formatted = retriever_prompt.format(conversation_history=conversation_history)
         #print(retriever_prompt_formatted)
 
-        response = llm.invoke(retriever_prompt_formatted)
-        cleaned_response = clean_response(response)
+        response = llm_json.invoke(retriever_prompt_formatted)
         print(response)
-        query = json.loads(cleaned_response.content)["query"]
-        question = json.loads(cleaned_response.content)["question"]
+        query = json.loads(response.content)["query"]
+        question = json.loads(response.content)["question"]
         print(query)
         print(question)
         docs = retriever.invoke(query)
@@ -499,3 +490,4 @@ def initialize_graph(vectorstore, memory):
     graph = workflow.compile(checkpointer=memory)
 
     return graph, config
+

@@ -47,7 +47,7 @@ with st.sidebar:
 
     if st.button("🗑️ Clear Conversation History"):
         st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
-        st.session_state.memory.clear()  # Clear memory saved in MemorySaver
+        st.session_state.memory = MemorySaver() # Reintialize memory
         st.success("🗑️ Conversation history cleared!")
 
     vectorstore_action = st.radio("Choose an action", ("Create Vectorstore", "Load Existing Vectorstore"))
@@ -70,6 +70,8 @@ with st.sidebar:
         config["llm_model"] = {selected_llm_model: available_models["llm_models"][selected_llm_model]}
         config["embeddings_model"] = {selected_embeddings_model: available_models["embeddings_models"][selected_embeddings_model]}
         config["parsing_method"] = selected_parsing_method
+        if "gpt" not in selected_llm_model:
+            selected_llm_model = available_models["llm_models"][selected_llm_model]["ollama"]
         save_json(CONFIG_FILE, config)
         
         if uploaded_files:
@@ -83,11 +85,11 @@ with st.sidebar:
             try:
                 st.session_state.vectorstore = vectorstore_pipeline(
                     embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
-                    llm_model_name=available_models["llm_models"][selected_llm_model]["huggingface"],
+                    llm_model_name=selected_llm_model,
                     file_paths=file_paths,
                     enrich_method="keywords",
                     parsing_method=selected_parsing_method,
-                    use_gpu=False
+                    use_gpu=True
                 )
                 st.session_state.vectorstore_created = True
                 st.success("✅ Vectorstore created successfully!")
@@ -101,7 +103,7 @@ with st.sidebar:
             st.session_state.vectorstore = load_vectorstore(
                 embeddings_model_name=recent_embeddings,
                 store_path="faiss_index",
-                use_gpu=False
+                use_gpu=True
             )
             st.session_state.vectorstore_created = True
             st.success("✅ Loaded existing vectorstore successfully!")

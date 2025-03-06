@@ -12,15 +12,6 @@
             "ollama" : "llama3.1",
             "huggingface" : "unsloth/Llama-3.1-8B-Instruct"
         },
-        "roberta-base-squad2" : {
-            "huggingface" : "deepset/roberta-base-squad2"
-        },
-        "flan-t5-large-squad2" : {
-            "huggingface" : "sjrhuschlee/flan-t5-large-squad2"
-        },
-        "xlm-roberta-base-squad2" : {
-            "huggingface" : "deepset/xlm-roberta-base-squad2"
-        },
         "gpt-4o" : { },
         "gpt-4o-mini" : { },
         "gpt-3.5-turbo" : { }

@@ -30,7 +30,8 @@ def get_settings_from_config():
             llm_model_name = model_name  # Directly use GPT model name
         else:
             # Get the model name from available_models.json  "huggingface"
-            llm_model_name = available_models["llm_models"].get(model_name, {}).get("huggingface") or \
+            llm_model_name = available_models["llm_models"].get(model_name, {}).get("ollama") or \
+                             available_models["llm_models"].get(model_name, {}).get("huggingface") or \
                              model_name  # Fallback to original model name
         
         settings["llm_model_name"] = llm_model_name
