@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import tempfile
-from vectorstore import vectorstore_pipeline, load_vectorstore
+from vectorstore import vectorstore_pipeline, CustomMultiVectorStore
 from model_configuration import load_json, save_json
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -71,7 +71,7 @@ with st.sidebar:
         config["embeddings_model"] = {selected_embeddings_model: available_models["embeddings_models"][selected_embeddings_model]}
         config["parsing_method"] = selected_parsing_method
         if "gpt" not in selected_llm_model:
-            selected_llm_model = available_models["llm_models"][selected_llm_model]["ollama"]
+            selected_llm_model = available_models["llm_models"][selected_llm_model]["huggingface"]
         save_json(CONFIG_FILE, config)
         
         if uploaded_files:
@@ -81,32 +81,27 @@ with st.sidebar:
             for uploaded_file, file_path in zip(uploaded_files, file_paths):
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-            
-            try:
-                st.session_state.vectorstore = vectorstore_pipeline(
-                    embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
-                    llm_model_name=selected_llm_model,
-                    file_paths=file_paths,
-                    enrich_method="keywords",
-                    parsing_method=selected_parsing_method,
-                    use_gpu=True
-                )
-                st.session_state.vectorstore_created = True
-                st.success("✅ Vectorstore created successfully!")
-            except Exception as e:
-                st.error(f"❌ Error creating vectorstore: {e}")
+            st.session_state.multi_vector_store = vectorstore_pipeline(
+                embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
+                llm_model_name=selected_llm_model,
+                file_paths=file_paths,
+                enrich_method="keywords",
+                parsing_method=selected_parsing_method,
+                use_gpu=False
+            )
+            st.session_state.vectorstore_created = True
+            st.success(f"✅ {st.session_state.multi_vector_store.num_vectorstores()} Vectorstore(s) created successfully!")
+
         else:
             st.warning("⚠️ Please upload PDFs before creating a vectorstore.")
 
     if vectorstore_action == "Load Existing Vectorstore" and not st.session_state.vectorstore_created and st.button("⚡ Load Vectorstore"):
         try:
-            st.session_state.vectorstore = load_vectorstore(
-                embeddings_model_name=recent_embeddings,
-                store_path="faiss_index",
-                use_gpu=True
-            )
+            languages = config["languages"]
+            st.session_state.multi_vector_store = CustomMultiVectorStore(embeddings_model_name=recent_embeddings, languages=languages)
+            st.session_state.multi_vector_store.load_vectorstores(languages)
             st.session_state.vectorstore_created = True
-            st.success("✅ Loaded existing vectorstore successfully!")
+            st.success(f"✅ Loaded existing {st.session_state.multi_vector_store.num_vectorstores()} vectorstore(s) successfully!")
         except FileNotFoundError:
             st.error("❌ Vectorstore not found. Please create a vectorstore first.")
         except Exception as e:
@@ -115,7 +110,7 @@ with st.sidebar:
     # Initializing Graph
     if st.session_state.vectorstore_created:
         from rag import initialize_graph
-        graph, config = initialize_graph(st.session_state.vectorstore, st.session_state.memory)
+        graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
 
 # Chat UI
 if 'messages' not in st.session_state:

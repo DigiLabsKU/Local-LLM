@@ -11,6 +11,8 @@ from langchain_core.documents import Document
 import os
 import gc
 from torch.cuda import empty_cache, is_available
+from langdetect import detect
+from model_configuration import load_json, save_json
 
 def free_resources_doc_parser():
     global kw_model
@@ -23,8 +25,6 @@ def free_resources_doc_parser():
     gc.collect()
 
     print("Freed resources for Document Parser: Marker-Pdf KeyBERT")
-
-model_name = "meta-llama/Llama-3.2-3B"
 
 def create_converter():
     
@@ -93,8 +93,6 @@ def token_len_fn(model_name: str):
             return len(tokens)
         return token_len
 
-token_fn = token_len_fn(model_name)
-
 def chunk_text(text: str, token_fn, chunk_size=1024, chunk_overlap=256):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -125,43 +123,60 @@ def enrich_chunks(documents, metadata, enrich_method=None):
             doc.metadata['keywords'] = extract_keywords(doc.page_content)
     return documents
 
+
 def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, parsing_method=["local", "llama_index"]) -> list[Document]:
     """
     Parses and chunks a list of PDF files using the provided converter and enrichment method.
     
-    Parameters
-    -----------
-    files : list[str]
-        A list of file paths
-    model_name : str
-        The name of the model to use for tokenization/conversation
-    enrich_method : str
-        An optional string telling which method to use for enriching the chunks, i.e. "summarization" or "keywords". The latter is more cost-effective.
-    parsing_method : str
-        A string specifying the method to use for parsing the PDFs, either "local" or "llama_index". Defaults to "local". 
-    
+    Args:
+        files : list[str]
+            A list of file paths
+        model_name : str
+            The name of the model to use for tokenization/conversation
+        enrich_method : str
+            An optional string telling which method to use for enriching the chunks, i.e. "summarization" or "keywords". The latter is more cost-effective.
+        parsing_method : str
+            A string specifying the method to use for parsing the PDFs, either "local" or "llama_index". Defaults to "local". 
+        
     Returns
-    -------
-    list
-        A list of chunks with additional metadata as langchain Documents. 
+        list[Document]: 
+            A list of chunks with additional metadata as langchain Documents. 
+        list[str]:
+            A list of languages detected from the contents of the documents. 
 
     """
     token_fn = token_len_fn(model_name)
+
+    languages = []
 
     if parsing_method == "local": 
         documents = []
         converter = create_converter()
         for fname in files:
             text, cleaned_metadata, _ = parse_pdf(converter, fname)
-            chunked_text = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
-            enriched_chunks = enrich_chunks(chunked_text, cleaned_metadata, enrich_method=enrich_method)
-            documents.extend(enriched_chunks)
+            chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
+            for doc in chunks:
+                doc.metadata['source'] = fname
+                doc.metadata['language'] = detect(doc.page_content) 
+                # if the language is not already in langs set then add it
+                if doc.metadata['language'] not in languages: doc.metadata['language']
+            documents.extend(chunks)
+                
     else:
-       documents = []
-       for fname in files:
-           docs = parse_pdf_llama(fname)
-           text = ''.join(doc.text for doc in docs)
-           chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
-           documents.extend(chunks)
+        documents = []
+        for fname in files:
+            docs = parse_pdf_llama(fname)
+            text = ''.join(doc.text for doc in docs)
+            chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
+            for doc in chunks:
+                doc.metadata['source'] = fname
+                doc.metadata['language'] = detect(doc.page_content)
+                if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
+            documents.extend(chunks)
 
-    return documents
+    # Saving the list of unique document languages
+    config = load_json("config.json")
+    config["languages"] = languages
+    save_json("config.json", config)
+
+    return documents, languages

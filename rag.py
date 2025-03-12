@@ -3,12 +3,14 @@ from langchain_ollama import ChatOllama
 from local_embeddings import LocalEmbeddings
 from langgraph.graph import MessagesState, StateGraph, END
 from langchain_core.messages import HumanMessage, SystemMessage
+from vectorstore import CustomMultiVectorStore
 import json
 import operator
-from typing import List, Annotated
+from typing import List, Annotated, Dict
 from model_configuration import get_settings_from_config
 import re
-import torch
+from langdetect import detect
+from langchain_core.documents import Document
 
 # Configuration
 settings = get_settings_from_config()
@@ -141,6 +143,8 @@ class GraphState(MessagesState):
     loop_step : Annotated[int, operator.add]
     documents : List[str] # List of retrieved documents 
     question : str # User query translated to question
+    translations : Dict[str, Dict[str, str]]   # { lang: {"query": str, "question": str}, ... }
+    doc_sets : Dict[str, List[Document]]       # { lang: [Document, Document, ...], ... }
 
 # Nodes
 def generate(state : GraphState):
@@ -178,31 +182,42 @@ def grade_documents(state : GraphState):
         sate (GraphState) : Filtered out irrelevant documents and updated no_relevant_docs state. 
     """
 
-    print("----CHECK DOCUMENT RELEVANCE TO THE QUESTION----")
+    print("----CHECK DOCUMENT RELEVANCE FOR EACH LANGUAGE----")
 
-    question = state["question"]
-    documents = state["documents"]
+    translations = state.get("translations", {})
+    doc_sets = state.get("doc_sets", {})
 
-    # Check each doc
-    filtered_docs = []
-    no_relevant_docs = 0
-    for doc in documents: 
-        doc_grader_prompt_formatted = doc_grader_prompt.format(document=doc.page_content, question=question)
-        result = llm_json.invoke([SystemMessage(content=doc_grader_instructions)] + [HumanMessage(content=doc_grader_prompt_formatted)])
-        grade = json.loads(result.content)["binary_score"]
-        # Document relevant
-        if grade.lower() == "yes":
-            print("----GRADE: DOCUMENT RELEVANT----")
-            filtered_docs.append(doc)
-        # Document not relevant
-        else:
-            continue
+    final_docs = []
+    # For each language, we do doc grading with the language-specific question
+    for lang, docs in doc_sets.items():
+        question_for_lang = translations[lang]["question"]
+        filtered_docs = []
 
-    # Check if no relevant documents were found
-    if len(filtered_docs) == 0: 
+        for doc in docs or []:
+            doc_grader_prompt_formatted = doc_grader_prompt.format(
+                document=doc.page_content,
+                question=question_for_lang
+            )
+            result = llm_json.invoke([
+                SystemMessage(content=doc_grader_instructions),
+                HumanMessage(content=doc_grader_prompt_formatted)
+            ])
+            grade = json.loads(result.content).get("binary_score", "no").lower()
+            if grade == "yes":
+                filtered_docs.append(doc)
+
+        final_docs.extend(filtered_docs)
+
+    # If no doc is relevant, set no_relevant_docs
+    if not final_docs:
         no_relevant_docs = 1
+    else:
+        no_relevant_docs = 0
 
-    return {"documents" : filtered_docs, "no_relevant_docs" : no_relevant_docs}
+    return {
+        "documents": final_docs,
+        "no_relevant_docs": no_relevant_docs
+    }
 
 def no_relevant_documents(state : GraphState):
     """
@@ -235,10 +250,9 @@ def direct_response(state : GraphState):
         sate (GraphState) : New graph state, answer, giving the LLM generated response to the question as well as resetting direct_response.
     """
 
-    # Add memory later -> So we can either use the previous conversation knowledge to respond or respond directly to a purely conversational question such as "Hi", "How are you?" etc. 
     print("----DIRECT RESPONSE----")
     # Prompt
-    rag_prompt = """
+    convo_prompt = """
     You are a helpful assistant built to have natural conversations with users. You should provide clear, complete, and well-structured responses formatted in **Markdown**.
 
     ### Conversation History:
@@ -249,14 +263,12 @@ def direct_response(state : GraphState):
 
     #### Your Response:
     - Think carefully about the context before responding.
-    - Format your answer in **Markdown**.
-    - You should always respond in the same language as the User Query, e.g. English or Danish primarily. 
+    - Respond in the same language as the User Query, e.g. English or Danish primarily. 
     - Provide a full, well-structured response while remaining concise.
     - You are allowed to use emojis when appropriate and needed.
 
     **Final Answer:** 
     """
-
 
     conversation_history = "\n".join([
         f"{message.type.capitalize()}: {message.content}"
@@ -264,14 +276,50 @@ def direct_response(state : GraphState):
         if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
     ])
 
-    print(conversation_history)
-
-
-    rag_prompt_formatted = rag_prompt.format(context=conversation_history, question=state["messages"][-1].content)
-    print(rag_prompt_formatted)
-    response = llm.invoke(rag_prompt_formatted)
+    convo_prompt_formatted = convo_prompt.format(context=conversation_history, question=state["messages"][-1].content)
+    print(convo_prompt_formatted)
+    response = llm.invoke(convo_prompt_formatted)
     print(response)
     return {"messages" : [response]}
+
+def final_response(state: GraphState):
+    """
+    Returns the final answers of the RAG, translated into the language of the user query if needed. 
+
+    Args:
+        state (GraphState) : The current graph state containing the answer from RAG.
+    Returns:
+        sate (GraphState) : New graph state, answer, containing the final answer from RAG.
+    """
+
+    print("----FINAL RESPONSE----")
+    final_answer = state["messages"][-1]
+    answer_lang = detect(final_answer.content)
+    target_lang = detect(state["messages"][-2].content)
+    print(final_answer.content, answer_lang, target_lang)
+    if answer_lang!= target_lang:
+        # Translate the answer into the language of the user query
+        translation_prompt = """
+        You are an expert at translating the given text into the desired language. 
+
+        ### Input Text:
+        **{input_text}**
+
+        ### Target Language: **{target_language}**
+
+        Keep you translation accurate and precise, while maintining all the context and information of the input text. Output nothing else other than the translation.  
+
+        #### Your Translation:
+        """
+        translation_prompt_formatted = translation_prompt.format(
+            input_text=final_answer.content,
+            target_language=target_lang
+        )
+        translation_result = llm.invoke(translation_prompt_formatted)
+        final_answer.content = translation_result.content
+    
+    return {"messages" : [final_answer]}
+
     
 # Edges 
 def route_question(state: MessagesState):
@@ -303,9 +351,7 @@ def route_question(state: MessagesState):
     For queries that are purely conversational, such as greetings ("Hi", "Hello") or casual questions ("How are you?"), and do not require knowledge from the documents, use direct-response. This applies even if the query is in a language other than English (e.g., Danish, French). 
 
     Questions asking for **definitions** should generally be retrieved from the vectorstore, unless the term is universally known and unambiguous (e.g., "What is an apple?" or "Define water"). If there is **any uncertainty** about whether the term might have a specific meaning within the uploaded documents, route the query to the vectorstore.
-
-    If the query is in a non-English language, determine if it's conversational or requires retrieval. If it is conversational (like greetings or small talk), route it to a direct response regardless of the language. If the query seems to require more specific knowledge (e.g., a complex question or one that may be discussed in the documents), route it to the vectorstore.
-
+    
     The conversation history is:
     -------------------------
     {conversation_history}
@@ -392,9 +438,10 @@ def grade_generation_v_documents_and_question(state: MessagesState):
         print("----MAX RETRIES REACHED : STOPPING RAG----")
         return "max retries"
 
-def initialize_graph(vectorstore, memory):
 
-    retriever = vectorstore.as_retriever(search_type="similarity")
+def initialize_graph(multi_vector_store: CustomMultiVectorStore, memory):
+
+    vectorstore = multi_vector_store
 
     def retrieve(state : GraphState):
         """
@@ -412,15 +459,28 @@ def initialize_graph(vectorstore, memory):
 
         Here is the conversation so far:
 
+        -----------------------
         {conversation_history}
+        -----------------------
 
         Based on the user's context, generate a concise and relevant query to retrieve the most appropriate documents from the vectorstore. The query should be based on the user's most recent message and the overall context of the conversation, avoiding irrelevant details.
 
-        Your output should be a JSON object with the following key:
-        - "query": A string that contains the query formulated from the conversation, which is suitable for retrieving documents from the vectorstore.
-        - "question": A string that contains a question formulated under the user's two most recent messages. 
+        1) Produce an "ephemeral_question_en" which is an English question summarizing that final user query.
+        2) For each language in this list: {languages},
+        create:
+        - "query" : a refined short query in that language formulated from the conversation, which is suitable for retrieving documents from the vectorstore.
+        - "question": a well-formed question in that language
 
-        Ensure the query is direct, specific, and tightly related to the user's needs. Don't include unnecessary information.
+        Return JSON like:
+        {{
+        "ephemeral_question_en": "...",
+        "translations": {{
+            "en": {{"query": "...", "question": "..."}},
+            "de": {{"query": "...", "question": "..."}},
+            ...
+            }}
+        }}
+        Be concise. 
         """
 
         conversation_history = "\n".join([
@@ -429,18 +489,38 @@ def initialize_graph(vectorstore, memory):
             if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
         ])
 
-        retriever_prompt_formatted = retriever_prompt.format(conversation_history=conversation_history)
+        retriever_prompt_formatted = retriever_prompt.format(conversation_history=conversation_history, languages=vectorstore.languages)
         #print(retriever_prompt_formatted)
 
         response = llm_json.invoke(retriever_prompt_formatted)
         print(response)
-        query = json.loads(response.content)["query"]
-        question = json.loads(response.content)["question"]
-        print(query)
-        print(question)
-        docs = retriever.invoke(query)
-        return {"documents" : docs, "question" : question}
+        try:
+            result_dict = json.loads(response.content)
+        except:
+            # fallback if parsing fails
+            result_dict = {
+                "ephemeral_question_en": state["messages"][-1].content,
+                "translations": {}
+            }
 
+        ephemeral_en = result_dict.get("ephemeral_question_en", "")
+        translations = result_dict.get("translations", {})
+
+        # Now retrieve from each language in the multi-vectorstore
+        doc_sets = {}
+        for lang in vectorstore.languages:
+            if lang in translations:
+                refined_query = translations[lang]["query"]
+                docs = vectorstore.query_vectorstore(refined_query, lang, k=5)
+                doc_sets[lang] = docs if docs else []
+            else:
+                doc_sets[lang] = []
+
+        return {
+            "question": ephemeral_en,     # We store the final question in English
+            "translations": translations, # language -> {query, question}
+            "doc_sets": doc_sets
+        }
 
     # Building Graph
     workflow = StateGraph(GraphState)
@@ -451,8 +531,10 @@ def initialize_graph(vectorstore, memory):
     workflow.add_node("grade_documents", grade_documents)
     workflow.add_node("no_relevant_documents", no_relevant_documents)
     workflow.add_node("generate", generate)
-    workflow.add_edge("respond_directly", END)
-    workflow.add_edge("no_relevant_documents", END)
+    workflow.add_node("final_response", final_response)
+    workflow.add_edge("respond_directly", "final_response")
+    workflow.add_edge("no_relevant_documents", "final_response")
+    workflow.add_edge("final_response", END)
 
     # Build graph
     workflow.set_conditional_entry_point(
@@ -478,8 +560,8 @@ def initialize_graph(vectorstore, memory):
         grade_generation_v_documents_and_question,
         {
             "not useful" : "generate",
-            "useful" : END,
-            "max retries" : END,
+            "useful" : "final_response",
+            "max retries" : "final_response",
         },
     )
 
@@ -490,4 +572,3 @@ def initialize_graph(vectorstore, memory):
     graph = workflow.compile(checkpointer=memory)
 
     return graph, config
-
