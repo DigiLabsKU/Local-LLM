@@ -263,7 +263,6 @@ def direct_response(state : GraphState):
 
     #### Your Response:
     - Think carefully about the context before responding.
-    - Respond in the same language as the User Query, e.g. English or Danish primarily. 
     - Provide a full, well-structured response while remaining concise.
     - You are allowed to use emojis when appropriate and needed.
 
@@ -295,9 +294,9 @@ def final_response(state: GraphState):
     print("----FINAL RESPONSE----")
     final_answer = state["messages"][-1]
     answer_lang = detect(final_answer.content)
-    target_lang = detect(state["messages"][-2].content)
+    target_lang = detect(state["messages"][-2].content) if "Hello" not in state["messages"][-2].content else "en"
     print(final_answer.content, answer_lang, target_lang)
-    if answer_lang!= target_lang:
+    if answer_lang!=target_lang:
         # Translate the answer into the language of the user query
         translation_prompt = """
         You are an expert at translating the given text into the desired language. 

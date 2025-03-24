@@ -4,6 +4,8 @@ import tempfile
 from vectorstore import vectorstore_pipeline, CustomMultiVectorStore
 from model_configuration import load_json, save_json
 from langgraph.checkpoint.memory import MemorySaver
+from datetime import datetime
+import tempfile
 
 # File paths
 AVAILABLE_MODELS_FILE = "available_models.json"
@@ -17,6 +19,7 @@ config = load_json(CONFIG_FILE)
 llm_models = list(available_models.get("llm_models", {}).keys())
 embeddings_models = list(available_models.get("embeddings_models", {}).keys())
 parsing_methods = ["local", "llama-index"]
+
 
 # Initialize session state
 if 'llm_model' not in st.session_state or 'embeddings_model' not in st.session_state:
@@ -39,6 +42,8 @@ if 'vectorstore_created' not in st.session_state:
 if 'memory' not in st.session_state:
     st.session_state.memory = MemorySaver()
 
+if 'messages' not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
 
 # Sidebar UI
 with st.sidebar:
@@ -106,6 +111,18 @@ with st.sidebar:
             st.error("❌ Vectorstore not found. Please create a vectorstore first.")
         except Exception as e:
             st.error(f"❌ Failed to load vectorstore: {e}")
+    
+    # Exporting conversation into txt file
+    if st.download_button(label="📥 Export Conversation", 
+                          data=f'Assistant: {st.session_state.messages[0]["content"]}\n----------------------\n'+"\n------------------------\n".join(
+                              # Pair up every User - Assistant Message and seperate them using lines
+                              f'User: {st.session_state.messages[i]["content"]}\n\nAssistant: {st.session_state.messages[i+1]["content"]}'
+                              for i in range(1, len(st.session_state.messages)-1, 2)
+                          ), 
+                          file_name=f'conversation_{datetime.now().strftime("%H_%M_%S_%d_%m_%Y")}.txt',
+                          mime="text/plain"):
+        st.success("✅ Conversation exported successfully!")
+    
 
     # Initializing Graph
     if st.session_state.vectorstore_created:
@@ -113,9 +130,6 @@ with st.sidebar:
         graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
 
 # Chat UI
-if 'messages' not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
-
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -126,6 +140,7 @@ if prompt := st.chat_input("💬 Type your message..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("assistant"):
+        st.empty()
         with st.spinner("⏳ Thinking..."):
                 inputs = {"messages": [{"role": "user", "content": prompt}], "max_retries": 3}
                 response = graph.invoke(inputs, config=config)
