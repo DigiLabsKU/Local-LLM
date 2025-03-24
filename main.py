@@ -45,6 +45,7 @@ if 'memory' not in st.session_state:
 if 'messages' not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
 
+
 # Sidebar UI
 with st.sidebar:
     st.title("💬 Local RAG")
@@ -61,7 +62,7 @@ with st.sidebar:
         selected_llm_model = st.selectbox("🔹 Select LLM Model", llm_models, index=llm_models.index(st.session_state.llm_model))
         selected_embeddings_model = st.selectbox("🔹 Select Embeddings Model", embeddings_models, index=embeddings_models.index(st.session_state.embeddings_model))
         selected_parsing_method = st.selectbox("🔹 Select Parsing Method", parsing_methods, index=parsing_methods.index(st.session_state.parsing_method))
-        uploaded_files = st.file_uploader("📂 Upload PDFs", type=["pdf"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("📂 Upload PDFs", type=["pdf", "txt", "pptx", "docx", "HTML"], accept_multiple_files=True)
     
     else:
         recent_llm = list(config.get("llm_model", {}).keys())[0]
@@ -111,18 +112,6 @@ with st.sidebar:
             st.error("❌ Vectorstore not found. Please create a vectorstore first.")
         except Exception as e:
             st.error(f"❌ Failed to load vectorstore: {e}")
-    
-    # Exporting conversation into txt file
-    if st.download_button(label="📥 Export Conversation", 
-                          data=f'Assistant: {st.session_state.messages[0]["content"]}\n----------------------\n'+"\n------------------------\n".join(
-                              # Pair up every User - Assistant Message and seperate them using lines
-                              f'User: {st.session_state.messages[i]["content"]}\n\nAssistant: {st.session_state.messages[i+1]["content"]}'
-                              for i in range(1, len(st.session_state.messages)-1, 2)
-                          ), 
-                          file_name=f'conversation_{datetime.now().strftime("%H_%M_%S_%d_%m_%Y")}.txt',
-                          mime="text/plain"):
-        st.success("✅ Conversation exported successfully!")
-    
 
     # Initializing Graph
     if st.session_state.vectorstore_created:
@@ -139,11 +128,26 @@ if prompt := st.chat_input("💬 Type your message..."):
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    with st.chat_message("assistant"):
-        st.empty()
+    with st.chat_message("assistant"), st.empty():
         with st.spinner("⏳ Thinking..."):
-                inputs = {"messages": [{"role": "user", "content": prompt}], "max_retries": 3}
-                response = graph.invoke(inputs, config=config)
-                bot_reply = response["messages"][-1].content
-                st.write(bot_reply)
-                st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+            inputs = {"messages": [{"role": "user", "content": prompt}], "max_retries": 3}
+            response = graph.invoke(inputs, config=config)
+            bot_reply = response["messages"][-1].content
+        st.markdown(bot_reply, unsafe_allow_html=True)
+        st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+
+# Prepare conversation export content
+conversation_text = "\n------------------------\n".join(
+        f'User: {st.session_state.messages[i]["content"]}\n\nAssistant: {st.session_state.messages[i+1]["content"]}'
+        for i in range(1, len(st.session_state.messages)-1, 2)
+    )
+
+if len(st.session_state.messages) > 1:
+    with st.container():
+        st.markdown(" ")
+        st.download_button(
+            label="📥 Export Conversation",
+            data=conversation_text,
+            file_name=f'conversation_{datetime.now().strftime("%H_%M_%S_%d_%m_%Y")}.txt',
+            mime="text/plain"
+        )

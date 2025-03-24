@@ -9,13 +9,21 @@ import operator
 from typing import List, Annotated, Dict
 from model_configuration import get_settings_from_config
 import re
-from langdetect import detect
 from langchain_core.documents import Document
+from lingua import Language, LanguageDetectorBuilder
 
 # Configuration
 settings = get_settings_from_config()
 llm_model_name = settings["llm_model_name"]
 embeddings_model_name = settings["embeddings_model_name"]
+languages = [Language.ENGLISH, 
+             Language.GERMAN, 
+             Language.SWEDISH, 
+             Language.DANISH, 
+             Language.NYNORSK,
+             Language.GREEK,
+             ]
+detector = LanguageDetectorBuilder.from_languages(*languages).build()
 
 if "gpt" in llm_model_name:
     llm = ChatOpenAI(
@@ -186,6 +194,7 @@ def grade_documents(state : GraphState):
 
     translations = state.get("translations", {})
     doc_sets = state.get("doc_sets", {})
+    print(doc_sets)
 
     final_docs = []
     # For each language, we do doc grading with the language-specific question
@@ -293,9 +302,11 @@ def final_response(state: GraphState):
 
     print("----FINAL RESPONSE----")
     final_answer = state["messages"][-1]
-    answer_lang = detect(final_answer.content)
-    target_lang = detect(state["messages"][-2].content) if "Hello" not in state["messages"][-2].content else "en"
-    print(final_answer.content, answer_lang, target_lang)
+    answer_langs = detector.compute_language_confidence_values(final_answer.content.lower())
+    target_langs = detector.compute_language_confidence_values(state["messages"][-2].content.lower())
+    answer_lang, target_lang = answer_langs[0].language.name, target_langs[0].language.name
+    print(answer_langs, target_langs, answer_lang, target_lang, sep='\n')
+    
     if answer_lang!=target_lang:
         # Translate the answer into the language of the user query
         translation_prompt = """

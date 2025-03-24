@@ -47,7 +47,7 @@ def get_settings_from_config():
 
     # Add all other settings from config.json
     for key, value in config.items():
-        if key not in ["llm_model", "embeddings_model"]:  # Avoid overwriting processed model names
+        if key not in ["llm_model", "embeddings_model"]:
             settings[key] = value
 
     return settings

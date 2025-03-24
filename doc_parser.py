@@ -1,3 +1,4 @@
+from markitdown import MarkItDown
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.output import text_from_rendered
@@ -13,6 +14,12 @@ import gc
 from torch.cuda import empty_cache, is_available
 from langdetect import detect
 from model_configuration import load_json, save_json
+import ntpath
+
+
+def path_leaf(path):
+    head, tail = ntpath.split(path)
+    return tail or ntpath.basename(head)
 
 def free_resources_doc_parser():
     global kw_model
@@ -34,45 +41,40 @@ def create_converter():
 
     return converter
 
-def clean_metadata(metadata) -> list:
-    cleaned_data = []
-    toc = metadata.get('table_of_contents', [])
-    for i, item in enumerate(toc):
-        title = item.get('title')
-        page_id = item.get('page_id')
-        parent = None
-        if i > 0 and item.get('level', 0) > toc[i-1].get('level', 0):
-            parent = toc[i-1].get('title')
-        if title and title.strip():
-            cleaned_data.append({
-                'title': title.strip(),
-                'page_id': page_id,
-                'parent': parent,
-                'level': item.get('level', 0)
-            })
-    return cleaned_data
-
-def parse_pdf(converter: PdfConverter, filename: str, **kwargs) -> tuple[str, list, dict]:
-    
+def parse_pdf(converter: PdfConverter, filename: str) -> tuple[str, list, dict]:
     rendered = converter(filename)
     text, _, images = text_from_rendered(rendered)
-    raw_metadata = rendered.metadata
 
-    cleaned_metadata = clean_metadata(raw_metadata)
-    cleaned_metadata.append({'source': filename})
+    return text
 
-    return text, cleaned_metadata, images
+def parse_document(file_path: str):
+    """
+    Parses various other document formats and converts to Markdown. 
 
+    Args:
+        file_path : str
+            The file path of the document to be parsed
+    Returns:
+        str : The parsed Markdown text
+    """
+
+    markitdown = MarkItDown()
+    result = markitdown.convert(file_path)
+    return result.text_content
 
 def parse_pdf_llama(file_path, format='markdown'):
     parser = LlamaParse(result_type=format, api_key=os.environ.get('LLAMA_CLOUD_API_KEY'))
-    # Use SimpleDirectoryReader to load the document
-    file_extractor = {".pdf": parser}  # Associate the parser with PDFs
+    file_extractor = {".pdf": parser, 
+                      ".txt": parser, 
+                      ".docx" : parser, 
+                      ".pptx" : parser, 
+                      ".HTML" : parser}  # Associate the parser with the following file extensions
     documents = SimpleDirectoryReader(
-        input_files=[file_path], 
+        input_files=[file_path],
         file_extractor=file_extractor).load_data()
-    return documents
 
+    print(documents[0].metadata)
+    return documents
 
 def token_len_fn(model_name: str):
     tokenizer = tiktoken.get_encoding('cl100k_base') if "gpt" in model_name else AutoTokenizer.from_pretrained(model_name)
@@ -109,21 +111,6 @@ def extract_keywords(text, n_keywords=5):
     keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words='english')
     return [kw[0] for kw in keywords[:5]]
 
-def enrich_chunks(documents, metadata, enrich_method=None):
-    for i, doc in enumerate(documents):
-        closest_section = next(
-            (item for item in reversed(metadata) if 'page_id' in item and item['page_id'] <= i),
-            {'title': 'Unknown Section'}
-        )
-        doc.metadata['title'] = closest_section['title']
-        doc.metadata['page_id'] = closest_section['page_id'] if 'page_id' in closest_section else 'no page_id available'
-        doc.metadata['chunk_index'] = i
-        doc.metadata['source'] = metadata[-1]['source']
-        if enrich_method == "keywords":
-            doc.metadata['keywords'] = extract_keywords(doc.page_content)
-    return documents
-
-
 def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, parsing_method=["local", "llama_index"]) -> list[Document]:
     """
     Parses and chunks a list of PDF files using the provided converter and enrichment method.
@@ -151,15 +138,23 @@ def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, pa
 
     if parsing_method == "local": 
         documents = []
-        converter = create_converter()
+        combined = '\t'.join(files)
+        if ".pdf" in combined: 
+            converter = create_converter()
+
         for fname in files:
-            text, cleaned_metadata, _ = parse_pdf(converter, fname)
+            file_extension = os.path.splitext(fname)[1].lower()
+            file_name = path_leaf(fname)
+            if file_extension == ".pdf":
+                text = parse_pdf(converter, fname)
+            else:
+                text = parse_document(fname)
             chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
             for doc in chunks:
-                doc.metadata['source'] = fname
-                doc.metadata['language'] = detect(doc.page_content) 
-                # if the language is not already in langs set then add it
-                if doc.metadata['language'] not in languages: doc.metadata['language']
+                doc.metadata['file_path'] = fname
+                doc.metadata['file_name'] = file_name
+                doc.metadata['language'] = detect(doc.page_content)
+                if doc.metadata['language'] not in languages: languages.append(doc.metadata['language'])
             documents.extend(chunks)
                 
     else:
@@ -169,10 +164,11 @@ def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, pa
             text = ''.join(doc.text for doc in docs)
             chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
             for doc in chunks:
-                doc.metadata['source'] = fname
                 doc.metadata['language'] = detect(doc.page_content)
+                doc.metadata['file_name'] = fname
                 if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
             documents.extend(chunks)
+        print(documents[:2])
 
     # Saving the list of unique document languages
     config = load_json("config.json")
@@ -180,3 +176,9 @@ def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, pa
     save_json("config.json", config)
 
     return documents, languages
+
+if __name__ == "__main__":
+    parse_pipeline(files=["data/ComIt_MA_2022.pdf"], 
+                   model="gpt-4o", 
+                   enrich_method=None, 
+                   parsing_method="local")
