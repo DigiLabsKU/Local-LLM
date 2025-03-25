@@ -24,8 +24,10 @@ A completely local RAG pipeline allowing the user to be able to chat with their 
 * The same applies if you intend to use the parsing API Llama-Index, then set an environment variable `LLAMA_CLOUD_API_KEY=YOUR_KEY_GOES_HERE` with your API-key.
 
 ### Running the Application
-
 * In terminal, navigate to the project-folder (where `main.py` is located) and run `streamlit run main.py`.
+
+## New Changes (updated 25/03/2025)
+* Support for multiple document formats such as text files (.txt), word documents (.docx), powerpoints (.pptx), webpages (.html), excel (.xlsx) and more. 
 
 ## Features (Updated along the way)
 * Local open-source models such as LLama-3.1, LLama-3.2 as well as LLama-3.3.
@@ -36,7 +38,7 @@ A completely local RAG pipeline allowing the user to be able to chat with their 
 * Use of LLama-Parse, a solution by LLama-Index (see [LLama-Parse](https://docs.cloud.llamaindex.ai/llamaparse/getting_started)), uses LLM to parse PDF files into markdown.
 
 ## Currently Working On
-* Support for multiple document formats such as text files (.txt), word documents (.docx), powerpoints (.pptx) and urls fx. links to articles/blogs etc.
+* Support for URLS, i.e. links to texts such as articles/blogs etc. 
 * Extending existing vector store by adding more documents (instead of creating new from scratch).
 * Adding sources in response to show which text passages were used for answering the question. 
 
