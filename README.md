@@ -21,8 +21,8 @@ A completely local RAG pipeline allowing the user to be able to chat with their 
 * Alternatively, you could also use the `requirements.txt` and install via. `pip install -r requirements.t  xt` (NOT YET ADDED -> USE METHOD ABOVE)
 
 ### API Requirements
-* If you intend to use Chat-GPT models such as 4o or 4o-mini, then make sure to set an environment variable `OPENAI_API_KEY=YOUR_KEY_GOES_HERE` with your API-key. Create one here [OpenAI API](https://platform.openai.com/settings/organization/api-keys)
-* The same applies if you intend to use the parsing API Llama-Index, then set an environment variable `LLAMA_CLOUD_API_KEY=YOUR_KEY_GOES_HERE` with your API-key. Follow this guide to create one [LlamaCloud API](https://docs.cloud.llamaindex.ai/llamaparse/getting_started/get_an_api_key)
+* If you intend to use Chat-GPT models such as 4o or 4o-mini, then make sure to set an environment variable `OPENAI_API_KEY=YOUR_KEY_GOES_HERE` with your API-key. Create one here [OpenAI API](https://platform.openai.com/settings/organization/api-keys).
+* The same applies if you intend to use the parsing API LlamaParse, then set an environment variable `LLAMA_CLOUD_API_KEY=YOUR_KEY_GOES_HERE` with your API-key. Follow this guide to create one [LlamaCloud API](https://docs.cloud.llamaindex.ai/llamaparse/getting_started/get_an_api_key).
 
 ### Running the Application
 * In terminal, navigate to the project-folder (where `main.py` is located) and run `streamlit run main.py`.
