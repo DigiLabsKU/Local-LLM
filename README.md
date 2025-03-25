@@ -14,10 +14,11 @@ A completely local RAG pipeline allowing the user to be able to chat with their 
 
     `pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
 
-* Install necessary libraries:
-    `uv pip install tiktoken langgraph langchain_community marker-pdf langchain langchain_ollama transformers sentence_transformers langchain_openai streamlit llama-index langdetect`
+* Install necessary libraries (copy-paste following command into the terminal with the activated CONDA environment):
+  
+    `uv pip install tiktoken langgraph langchain_community marker-pdf langchain langchain_ollama transformers sentence_transformers langchain_openai streamlit llama-index lingua-language-detector markitdown[all]`
 
-* Alternatively, you could also use the `requirements.txt` and install via. `pip install -r requirements.t  xt`
+* Alternatively, you could also use the `requirements.txt` and install via. `pip install -r requirements.t  xt` (NOT YET ADDED -> USE METHOD ABOVE)
 
 ### API Requirements
 * If you intend to use Chat-GPT models such as 4o or 4o-mini, then make sure to set an environment variable `OPENAI_API_KEY=YOUR_KEY_GOES_HERE` with your API-key. 
