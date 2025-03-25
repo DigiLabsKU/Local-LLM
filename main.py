@@ -62,7 +62,7 @@ with st.sidebar:
         selected_llm_model = st.selectbox("🔹 Select LLM Model", llm_models, index=llm_models.index(st.session_state.llm_model))
         selected_embeddings_model = st.selectbox("🔹 Select Embeddings Model", embeddings_models, index=embeddings_models.index(st.session_state.embeddings_model))
         selected_parsing_method = st.selectbox("🔹 Select Parsing Method", parsing_methods, index=parsing_methods.index(st.session_state.parsing_method))
-        uploaded_files = st.file_uploader("📂 Upload PDFs", type=["pdf", "txt", "pptx", "docx", "HTML"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("📂 Upload PDFs", type=["pdf", "txt", "pptx", "docx", "HTML", "xls"], accept_multiple_files=True)
     
     else:
         recent_llm = list(config.get("llm_model", {}).keys())[0]
