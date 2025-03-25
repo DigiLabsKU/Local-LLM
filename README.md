@@ -28,7 +28,8 @@ A completely local RAG pipeline allowing the user to be able to chat with their 
 * In terminal, navigate to the project-folder (where `main.py` is located) and run `streamlit run main.py`.
 
 ## New Changes (updated 25/03/2025)
-* Support for multiple document formats such as text files (.txt), word documents (.docx), powerpoints (.pptx), webpages (.html), excel (.xlsx) and more. 
+* Support for multiple document formats such as text files (.txt), word documents (.docx), powerpoints (.pptx), webpages (.html), excel (.xlsx) and more.
+* Exporting conversation into a TEXT file. 
 
 ## Features (Updated along the way)
 * Local open-source models such as LLama-3.1, LLama-3.2 as well as LLama-3.3.
