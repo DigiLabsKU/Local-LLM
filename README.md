@@ -4,34 +4,44 @@ A completely local RAG pipeline allowing the user to be able to chat with their 
 
 ## Build Instructions (Updated along the way)
 
+### Conda Environment 
 * Setup conda environment: `conda create -n local-llm python=3.11.5`
 * Activate conda environment: `conda activate local-llm`
+
+### Necessary Libraries
 * Install `uv`: `pip install uv`
-* Install PyTorch with CUDA ([PyTorch](https://pytorch.org/get-started/locally/)): 
+* Install PyTorch with CUDA ([PyTorch](https://pytorch.org/get-started/locally/)), replace `cu118` with your CUDA version: 
 
     `pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
 
-* Install `marker-pdf`: `uv pip install marker-pdf`
-* Install `KeyBERT`: `uv pip install keybert`
+* Install necessary libraries:
+    `uv pip install tiktoken langgraph langchain_community marker-pdf langchain langchain_ollama transformers sentence_transformers langchain_openai streamlit llama-index langdetect`
 
-## Features
+* Alternatively, you could also use the `requirements.txt` and install via. `pip install -r requirements.t  xt`
 
-* Completely private (hopefully this implies that we won't need internet connection to run this program)
-* Use a local LLM for chatting (Model yet to be determined)
-* Use a local LLM for embeddings (Model yet to be determined)
-* Refined metadata structure when processing documents (Processes the pdf documents and tags it with relevant metadata that can help provide the LLM with useful insights when answering user queries). 
-    * This must be done automatically, one potential idea is to summarize the documents and analyze the structure. 
-* Memory for a smoother conversation (Memory is only supposed to be kept when in session, removed completely afterwards). 
-* Interactive UI for the users, for easier usage for users not familiar with CLI. 
+### API Requirements
+* If you intend to use Chat-GPT models such as 4o or 4o-mini, then make sure to set an environment variable `OPENAI_API_KEY=YOUR_KEY_GOES_HERE` with your API-key. 
+* The same applies if you intend to use the parsing API Llama-Index, then set an environment variable `LLAMA_CLOUD_API_KEY=YOUR_KEY_GOES_HERE` with your API-key.
 
-## Areas of focus
+### Running the Application
 
-* Processing the documents using some local method, which is not only efficient but also preserves the quality of the document i.e. content and structure  (something like a pdf -> markdown parser). 
-* Automatically tagging the documents with relevant metadata that could help the model to familiarize itself with the contents of the documents. 
-* Developing a user friendly UI, no need for anything fancy -> going for a simplistic approach emphasizing efficiency and ease of use. 
+* In terminal, navigate to the project-folder (where `main.py` is located) and run `streamlit run main.py`.
 
-## Notes
+## Features (Updated along the way)
+* Local open-source models such as LLama-3.1, LLama-3.2 as well as LLama-3.3.
+* Use of OpenAI models, currently GPT-4o, GPT-4o-mini.
+* Local embeddings models for multilingual capabilities, such as `all-MiniLM-L6-v2` and `multilingual-e5-large-instruct`. 
+* Use of OpenAI embeddings models, currently `text-embedding-3-small` and `text-embedding-3-large`.
+* Local parsing method using `marker-pdf`, levaraging GPU to parse PDF-files efficiently to markdown format incl. tables.
+* Use of LLama-Parse, a solution by LLama-Index (see [LLama-Parse](https://docs.cloud.llamaindex.ai/llamaparse/getting_started)), uses LLM to parse PDF files into markdown.
 
-* Local LLM's probably needs some efficient library, maybe something like llama-cpp allowing for optimized usage of local models?
-* Faiss-GPU is most likely going to be used, since it supports GPU-accelerated Vector-database that are stored in-memory.
-* Maybe LangChain? (If it doesn't slow down the program too much) Could be handy for creating a conversation chain + memory. 
+## Currently Working On
+* Support for multiple document formats such as text files (.txt), word documents (.docx), powerpoints (.pptx) and urls fx. links to articles/blogs etc.
+* Extending existing vector store by adding more documents (instead of creating new from scratch).
+* Adding sources in response to show which text passages were used for answering the question. 
+
+## Planned Updates
+* Support for own LLM models in GGUF format from fx. HuggingFace
+* Support for own embeddings models from fx. HuggingFace
+* Adding more OpenAI models.
+* Refining UI by moving to some better framework (Streamlit is for prototyping). 
