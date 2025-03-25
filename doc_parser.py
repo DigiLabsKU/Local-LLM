@@ -7,7 +7,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from llama_parse import LlamaParse
 from llama_index.core import SimpleDirectoryReader
 import tiktoken
-from keybert import KeyBERT
 from langchain_core.documents import Document
 import os
 import gc
@@ -15,6 +14,7 @@ from torch.cuda import empty_cache, is_available
 from langdetect import detect
 from model_configuration import load_json, save_json
 import ntpath
+from typing_extensions import Literal, List
 
 
 def path_leaf(path):
@@ -22,16 +22,13 @@ def path_leaf(path):
     return tail or ntpath.basename(head)
 
 def free_resources_doc_parser():
-    global kw_model
-
-    del kw_model
 
     if is_available():
         empty_cache()
 
     gc.collect()
 
-    print("Freed resources for Document Parser: Marker-Pdf KeyBERT")
+    print("Freed resources for Document Parser: Marker-Pdf")
 
 def create_converter():
     
@@ -43,7 +40,7 @@ def create_converter():
 
 def parse_pdf(converter: PdfConverter, filename: str) -> tuple[str, list, dict]:
     rendered = converter(filename)
-    text, _, images = text_from_rendered(rendered)
+    text, _, _ = text_from_rendered(rendered)
 
     return text
 
@@ -62,7 +59,7 @@ def parse_document(file_path: str):
     result = markitdown.convert(file_path)
     return result.text_content
 
-def parse_pdf_llama(file_path, format='markdown'):
+def parse_pdf_llama(file_path: str, format: str='markdown'):
     parser = LlamaParse(result_type=format, api_key=os.environ.get('LLAMA_CLOUD_API_KEY'))
     file_extractor = {".pdf": parser, 
                       ".txt": parser, 
@@ -95,7 +92,7 @@ def token_len_fn(model_name: str):
             return len(tokens)
         return token_len
 
-def chunk_text(text: str, token_fn, chunk_size=1024, chunk_overlap=256):
+def chunk_text(text: str, token_fn: function, chunk_size: int=1024, chunk_overlap: int=256):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -105,30 +102,22 @@ def chunk_text(text: str, token_fn, chunk_size=1024, chunk_overlap=256):
     splits = splitter.split_text(text)
     return splitter.create_documents(splits)
 
-# Keywords
-kw_model = KeyBERT()
-def extract_keywords(text, n_keywords=5):
-    keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words='english')
-    return [kw[0] for kw in keywords[:5]]
-
-def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, parsing_method=["local", "llama_index"]) -> list[Document]:
+def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["local", "llama_index"] = "local") -> List[Document]:
     """
     Parses and chunks a list of PDF files using the provided converter and enrichment method.
     
     Args:
-        files : list[str]
+        files : List[str]
             A list of file paths
         model_name : str
             The name of the model to use for tokenization/conversation
-        enrich_method : str
-            An optional string telling which method to use for enriching the chunks, i.e. "summarization" or "keywords". The latter is more cost-effective.
         parsing_method : str
             A string specifying the method to use for parsing the PDFs, either "local" or "llama_index". Defaults to "local". 
         
     Returns
-        list[Document]: 
-            A list of chunks with additional metadata as langchain Documents. 
-        list[str]:
+        List[Document]: 
+            A list of chunks with additional metadata as Langchain Documents. 
+        List[str]:
             A list of languages detected from the contents of the documents. 
 
     """
@@ -138,6 +127,8 @@ def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, pa
 
     if parsing_method == "local": 
         documents = []
+        
+        # Only load marker-pdf if PDF file is present in the files (saves resources). 
         combined = '\t'.join(files)
         if ".pdf" in combined: 
             converter = create_converter()
@@ -179,6 +170,5 @@ def parse_pipeline(files: list[str], model_name:str, enrich_method: str=None, pa
 
 if __name__ == "__main__":
     parse_pipeline(files=["data/ComIt_MA_2022.pdf"], 
-                   model="gpt-4o", 
-                   enrich_method=None, 
+                   model="gpt-4o",
                    parsing_method="local")

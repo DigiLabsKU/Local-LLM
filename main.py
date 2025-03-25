@@ -91,7 +91,6 @@ with st.sidebar:
                 embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
                 llm_model_name=selected_llm_model,
                 file_paths=file_paths,
-                enrich_method="keywords",
                 parsing_method=selected_parsing_method,
                 use_gpu=False
             )

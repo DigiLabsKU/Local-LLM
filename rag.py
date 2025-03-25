@@ -94,10 +94,10 @@ You are an assistant specializing in question-answering based on provided docume
 **Final Answer:** 
 """
 
-def format_docs(docs):
+def format_docs(docs: List[Document]):
     return "\n\n".join(doc.page_content for doc in docs)
 
-def clean_response(response):
+def clean_response(response: str):
     match = re.search(r'```json(.*?)```', response.content, re.DOTALL)
     if match:
         cleaned_response = match.group(1).strip()
@@ -245,7 +245,6 @@ def no_relevant_documents(state : GraphState):
     Keep your answer brief and concise. Use a maximum of two sentences. 
     """
     response = llm.invoke(no_relevant_docs_prompt)
-    print(response)
     return {'messages' : [response]}
 
 def direct_response(state : GraphState):
