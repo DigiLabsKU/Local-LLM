@@ -20,7 +20,6 @@ llm_models = list(available_models.get("llm_models", {}).keys())
 embeddings_models = list(available_models.get("embeddings_models", {}).keys())
 parsing_methods = ["local", "llama-index"]
 
-
 # Initialize session state
 if 'llm_model' not in st.session_state or 'embeddings_model' not in st.session_state:
     llm_model_from_config = config.get("llm_model", {})
@@ -44,7 +43,6 @@ if 'memory' not in st.session_state:
 
 if 'messages' not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
-
 
 # Sidebar UI
 with st.sidebar:
@@ -100,17 +98,50 @@ with st.sidebar:
         else:
             st.warning("⚠️ Please upload PDFs before creating a vectorstore.")
 
-    if vectorstore_action == "Load Existing Vectorstore" and not st.session_state.vectorstore_created and st.button("⚡ Load Vectorstore"):
-        try:
-            languages = config["languages"]
-            st.session_state.multi_vector_store = CustomMultiVectorStore(embeddings_model_name=recent_embeddings, languages=languages)
-            st.session_state.multi_vector_store.load_vectorstores(languages)
-            st.session_state.vectorstore_created = True
-            st.success(f"✅ Loaded existing {st.session_state.multi_vector_store.num_vectorstores()} vectorstore(s) successfully!")
-        except FileNotFoundError:
-            st.error("❌ Vectorstore not found. Please create a vectorstore first.")
-        except Exception as e:
-            st.error(f"❌ Failed to load vectorstore: {e}")
+    if vectorstore_action == "Load Existing Vectorstore":
+        load_btn = st.button("⚡ Load Vectorstore", disabled=st.session_state.vectorstore_created)
+
+        if not st.session_state.vectorstore_created and load_btn:
+            try:
+                languages = config["languages"]
+                st.session_state.multi_vector_store = CustomMultiVectorStore(
+                    embeddings_model_name=recent_embeddings,
+                    languages=languages
+                )
+                st.session_state.multi_vector_store.load_vectorstores(languages)
+                st.session_state.vectorstore_created = True
+                st.success(f"✅ Loaded existing {st.session_state.multi_vector_store.num_vectorstores()} vectorstore(s) successfully!")
+            except FileNotFoundError:
+                st.error("❌ Vectorstore not found. Please create a vectorstore first.")
+            except Exception as e:
+                st.error(f"❌ Failed to load vectorstore: {e}")
+
+        # If already loaded, offer to extend it
+        if st.session_state.vectorstore_created:
+            st.markdown("### ➕ Extend Loaded Vector Store")
+            extension_files = st.file_uploader("📂 Upload Files to Extend Vectorstore", type=["pdf", "txt", "pptx", "docx", "HTML", "xls"], accept_multiple_files=True, key="extend_uploader")
+            if st.button("📌 Extend Vector Store"):
+                if extension_files:
+                    temp_dir = tempfile.gettempdir()
+                    file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in extension_files]
+                    for uploaded_file, file_path in zip(extension_files, file_paths):
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+
+                    from vectorstore import extend_multi_vector_store
+
+                    st.session_state.multi_vector_store = extend_multi_vector_store(
+                        st.session_state.multi_vector_store,
+                        llm_model_name=recent_llm,
+                        file_paths=file_paths,
+                        parsing_method=config.get("parsing_method", "local")
+                    )
+
+                    from rag import initialize_graph
+                    graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
+                    st.success("✅ Vectorstore extended successfully!")
+                else:
+                    st.warning("⚠️ Please upload files to extend the vectorstore.")
 
     # Initializing Graph
     if st.session_state.vectorstore_created:

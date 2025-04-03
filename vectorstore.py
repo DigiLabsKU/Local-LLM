@@ -10,8 +10,7 @@ from typing_extensions import List, Dict, Literal
 from collections import defaultdict
 
 class CustomMultiVectorStore:
-
-    def __init__(self, embeddings_model_name: str, languages: list[str]=[], use_gpu=False):
+    def __init__(self, embeddings_model_name: str, languages: List[str]=[], use_gpu=False):
         self.vectorstores : Dict[str, FAISS] = {}
         self.embeddings_model_name : str = embeddings_model_name
         self.use_gpu : bool = use_gpu
@@ -107,26 +106,25 @@ class CustomMultiVectorStore:
         
         # Extend already existing vector store(s)
         for lang in docs_by_lang.keys():
-            extended_vector_store = add_documents(self.vectorstores[lang], docs_by_lang[lang], save=f"vectorstores/{lang}_vector_store", use_gpu=self.use_gpu)
-            self.vectorstores[lang] = extended_vector_store
+            add_documents(self.vectorstores[lang], docs_by_lang[lang], save=f"vectorstores/{lang}_vector_store", use_gpu=self.use_gpu)
         
         print(f"Extended the vector stores of the following langs {extended_langs}")
 
-    def query_vectorstore(self, query: str, lang: str, k: int=3) -> None | List[Document]:
+    def query_vectorstore(self, query: str, lang: str, k: int=4) -> None | List[Document]:
         """
         Queries the specified vector store for relevant documents.
         
         Args:
             query (str) : The user's query
             lang (str) : The language of the vector store
-            k (int) : The number of relevant documents to return. Defaults to 3.
+            k (int) : The number of relevant documents to return. Defaults to 4.
 
         Returns:
             (None | List[Document]) : A list of relevant documents (langchain documents) or None if no relevant documents found.
         """
 
         if lang in self.vectorstores:
-            retriever = self.vectorstores[lang].as_retriever(search_type="similarity")
+            retriever = self.vectorstores[lang].as_retriever(search_type="similarity", search_kwargs={'k': k})
             results = retriever.invoke(query)
             return results
         else:
@@ -226,3 +224,32 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_p
         free_resources_doc_parser()
 
     return vector_store
+
+
+def extend_multi_vector_store(multi_vector_store: CustomMultiVectorStore, llm_model_name: str, file_paths: List[str], parsing_method: Literal["local", "llama_index"] = "local") -> CustomMultiVectorStore:
+    """
+    Extend an existing CustomMultiVectorStore instance with new documents. 
+    
+    Args:
+        multi_vector_store : CustomMultiVectorStore
+            The multi_vector_store instance to extend
+        llm_model_name : str
+            The name of the llm model to use for the RAG.
+        file_paths : List[str]
+            The file paths of the PDFs to be parsed.
+        parsing_method : Literal
+            Which parsing method to use, either "local" or "llama_index". Defaults to "local". 
+    
+    Returns:
+        CustomMultiVectorStore : The extended multi_vector_store instance.
+    """
+
+    documents, _ = parse_pipeline(file_paths, llm_model_name, parsing_method=parsing_method)
+    multi_vector_store.extend_vectorstore(documents)
+    
+    # Free memory
+    del documents
+    if parsing_method == 'local':
+        free_resources_doc_parser()
+    
+    return multi_vector_store

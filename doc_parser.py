@@ -14,8 +14,7 @@ from torch.cuda import empty_cache, is_available
 from langdetect import detect
 from model_configuration import load_json, save_json
 import ntpath
-from typing_extensions import Literal, List
-
+from typing_extensions import Literal, List, Tuple, Callable
 
 def path_leaf(path):
     head, tail = ntpath.split(path)
@@ -59,24 +58,29 @@ def parse_document(file_path: str):
     result = markitdown.convert(file_path)
     return result.text_content
 
-def parse_pdf_llama(file_path: str, format: str='markdown'):
+def parse_pdf_llama(file_path: str, format: str='markdown') -> List[Document]:
     parser = LlamaParse(result_type=format, api_key=os.environ.get('LLAMA_CLOUD_API_KEY'))
     file_extractor = {".pdf": parser, 
                       ".txt": parser, 
                       ".docx" : parser, 
                       ".pptx" : parser, 
-                      ".HTML" : parser}  # Associate the parser with the following file extensions
-    documents = SimpleDirectoryReader(
-        input_files=[file_path],
-        file_extractor=file_extractor).load_data()
-
-    print(documents[0].metadata)
+                      ".HTML" : parser,
+                      ".xlsx" : parser,
+                      }  # Associate the parser with the following file extensions
+    try:
+        documents = SimpleDirectoryReader(
+            input_files=[file_path],
+            file_extractor=file_extractor).load_data()
+    except Exception as e:
+        print(f"Failed to load documents: {e}")
+        return []
+        
     return documents
 
-def token_len_fn(model_name: str):
+def token_len_fn(model_name: str) -> Callable[[str], int]:
     tokenizer = tiktoken.get_encoding('cl100k_base') if "gpt" in model_name else AutoTokenizer.from_pretrained(model_name)
     if "gpt" in model_name:
-        def tiktoken_len(text):
+        def tiktoken_len(text: str):
             tokens = tokenizer.encode(
                 text,
                 disallowed_special=()
@@ -84,7 +88,7 @@ def token_len_fn(model_name: str):
             return len(tokens)
         return tiktoken_len
     else: # A model from huggingface
-        def token_len(text):
+        def token_len(text: str):
             tokens = tokenizer.encode(
                 text,
                 add_special_tokens=False
@@ -92,7 +96,7 @@ def token_len_fn(model_name: str):
             return len(tokens)
         return token_len
 
-def chunk_text(text: str, token_fn: function, chunk_size: int=1024, chunk_overlap: int=256):
+def chunk_text(text: str, token_fn: Callable[[str], int], chunk_size: int=1024, chunk_overlap: int=256) -> List[Document]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -102,7 +106,7 @@ def chunk_text(text: str, token_fn: function, chunk_size: int=1024, chunk_overla
     splits = splitter.split_text(text)
     return splitter.create_documents(splits)
 
-def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["local", "llama_index"] = "local") -> List[Document]:
+def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["local", "llama_index"] = "local") -> Tuple[List[Document], List[str]]:
     """
     Parses and chunks a list of PDF files using the provided converter and enrichment method.
     
@@ -149,7 +153,7 @@ def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["lo
             documents.extend(chunks)
                 
     else:
-        documents = []
+        documents : List[Document] = []
         for fname in files:
             docs = parse_pdf_llama(fname)
             text = ''.join(doc.text for doc in docs)
@@ -159,7 +163,9 @@ def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["lo
                 doc.metadata['file_name'] = fname
                 if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
             documents.extend(chunks)
-        print(documents[:2])
+    
+    # Filter out empty documents
+    documents = [doc for doc in documents if doc.page_content]
 
     # Saving the list of unique document languages
     config = load_json("config.json")

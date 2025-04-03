@@ -104,6 +104,7 @@ def clean_response(response: str):
         response.content = cleaned_response
     return response
 
+
 ### Answer Grader ###
 
 # Answer grader instructions
@@ -133,7 +134,7 @@ Avoid simply stating the correct answer at the outset.
 # Grader Prompt
 answer_grader_prompt = """QUESTION: {question} \n\n FACTS: \n\n {documents} \n\n STUDENT ANSWER: {generation}
 
-Return JSON with two keys, 'binary_score' is 'yes' or 'no' to indicate whether the STUDENT ANSWER is grounded in the FACTS and helps answer the QUESTION. And a key, explanation, that contains an explanation of the score.. 
+Return JSON with two keys, 'binary_score' is 'yes' or 'no' to indicate whether the STUDENT ANSWER is grounded in the FACTS and helps answer the QUESTION. And a key, explanation, that contains an explanation of the score. 
 """
 
 
