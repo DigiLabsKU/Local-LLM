@@ -16,8 +16,6 @@ from model_configuration import load_json, save_json
 import ntpath
 from typing_extensions import Literal, List, Tuple, Callable
 
-
-
 # Helper functions
 def path_leaf(path):
     head, tail = ntpath.split(path)
@@ -40,7 +38,7 @@ def is_valid_chunk(text: str, min_length: int=30, text_threshold: float=0.15) ->
 
 def free_resources_doc_parser():
 
-    if is_available():
+    if is_available(): # GPU
         empty_cache()
 
     gc.collect()
@@ -55,6 +53,7 @@ def create_converter():
 
     return converter
 
+# Parsing Functions
 def parse_pdf(converter: PdfConverter, filename: str) -> tuple[str, list, dict]:
     rendered = converter(filename)
     text, _, _ = text_from_rendered(rendered)
@@ -90,11 +89,12 @@ def parse_pdf_llama(file_path: str, format: str='markdown') -> List[Document]:
             input_files=[file_path],
             file_extractor=file_extractor).load_data()
     except Exception as e:
-        print(f"Failed to load documents: {e}")
-        return []
+        print(f"Failed to load documents: {e}\n")
+        
         
     return documents
 
+# Text Processing Functions
 def token_len_fn(model_name: str) -> Callable[[str], int]:
     tokenizer = tiktoken.get_encoding('cl100k_base') if "gpt" in model_name else AutoTokenizer.from_pretrained(model_name)
     if "gpt" in model_name:
@@ -124,6 +124,7 @@ def chunk_text(text: str, token_fn: Callable[[str], int], chunk_size: int=1024, 
     splits = splitter.split_text(text)
     return splitter.create_documents(splits)
 
+# Creating Pipeline
 def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["local", "llama_index"] = "local") -> Tuple[List[Document], List[str]]:
     """
     Parses and chunks a list of PDF files using the provided converter and enrichment method.
@@ -148,9 +149,8 @@ def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["lo
     languages = []
 
     if parsing_method == "local": 
-        documents = []
-        
-        # Only load marker-pdf if PDF file is present in the files (saves resources). 
+        documents : List[Document] = []
+
         combined = '\t'.join(files)
         if ".pdf" in combined: 
             converter = create_converter()
@@ -177,19 +177,44 @@ def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["lo
         documents : List[Document] = []
         for fname in files:
             docs = parse_pdf_llama(fname)
-            text = ''.join(doc.text for doc in docs)
-            chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
-            for doc in chunks:
-                if is_valid_chunk(doc.page_content):
-                    doc.metadata['language'] = detect(doc.page_content)
-                    doc.metadata['file_name'] = fname
-                    if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
-                else:
-                    continue
-            documents.extend(chunks)
-    
-    # Filter out empty documents
-    documents = [doc for doc in documents if doc.page_content]
+            if not docs:
+                # LlamaParse failed the first time, so trying once more.
+                docs = parse_pdf_llama(fname)
+            if docs: 
+                text = ''.join(doc.text for doc in docs)
+                chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
+                for doc in chunks:
+                    if is_valid_chunk(doc.page_content):
+                        doc.metadata['language'] = detect(doc.page_content)
+                        doc.metadata['file_name'] = fname
+                        if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
+                    else:
+                        continue
+                documents.extend(chunks)
+            # If LlamaParse failed -> fall back to local
+            else:
+                print("LlamaParse failed again to parse the documents falling back to local parsing method.\n")
+                combined = '\t'.join(files)
+                if ".pdf" in combined: 
+                    converter = create_converter()
+
+                for fname in files:
+                    file_extension = os.path.splitext(fname)[1].lower()
+                    file_name = path_leaf(fname)
+                    if file_extension == ".pdf":
+                        text = parse_pdf(converter, fname)
+                    else:
+                        text = parse_document(fname)
+                    chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
+                    for doc in chunks:
+                        if is_valid_chunk(doc.page_content):
+                            doc.metadata['file_path'] = fname
+                            doc.metadata['file_name'] = file_name
+                            doc.metadata['language'] = detect(doc.page_content)
+                            if doc.metadata['language'] not in languages: languages.append(doc.metadata['language'])
+                        else:
+                            continue
+                    documents.extend(chunks)
 
     # Saving the list of unique document languages
     config = load_json("config.json")
