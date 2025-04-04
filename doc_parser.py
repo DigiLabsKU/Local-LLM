@@ -31,7 +31,7 @@ def is_valid_chunk(text: str, min_length: int=30, text_threshold: float=0.15) ->
 
     # Check if text content meets given threshold
     letter_count = sum(c.isalpha() for c in text)
-    ratio = letter_count / text
+    ratio = letter_count / len(text)
 
     if ratio < text_threshold:
         return False

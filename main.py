@@ -130,9 +130,12 @@ with st.sidebar:
 
                     from vectorstore import extend_multi_vector_store
 
+                    config = load_json(CONFIG_FILE)
+                    recent_llm = list(config.get("llm_model", {}).keys())[0]
+
                     st.session_state.multi_vector_store = extend_multi_vector_store(
                         st.session_state.multi_vector_store,
-                        llm_model_name=recent_llm,
+                        llm_model_name=recent_llm["hugging_face"],
                         file_paths=file_paths,
                         parsing_method=config.get("parsing_method", "local")
                     )

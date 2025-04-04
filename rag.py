@@ -97,7 +97,7 @@ You are an assistant specializing in question-answering based on provided docume
 def format_docs(docs: List[Document]) -> str:
     return "\n\n".join(doc.page_content for doc in docs)
 
-def clean_response(response: Dict[str, Any]) -> :
+def clean_response(response: Dict[str, Any]) -> Dict[str, Any]:
     match = re.search(r'```json(.*?)```', response.content, re.DOTALL)
     if match:
         cleaned_response = match.group(1).strip()
