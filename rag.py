@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from vectorstore import CustomMultiVectorStore
 import json
 import operator
-from typing import List, Annotated, Dict
+from typing import List, Annotated, Dict, Any
 from model_configuration import get_settings_from_config
 import re
 from langchain_core.documents import Document
@@ -94,10 +94,10 @@ You are an assistant specializing in question-answering based on provided docume
 **Final Answer:** 
 """
 
-def format_docs(docs: List[Document]):
+def format_docs(docs: List[Document]) -> str:
     return "\n\n".join(doc.page_content for doc in docs)
 
-def clean_response(response: str):
+def clean_response(response: Dict[str, Any]) -> :
     match = re.search(r'```json(.*?)```', response.content, re.DOTALL)
     if match:
         cleaned_response = match.group(1).strip()

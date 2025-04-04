@@ -49,7 +49,7 @@ class CustomMultiVectorStore:
         Loads the specified vector stores from their respective save locations.
 
         Args:
-            languages (List[str]) : The languages of the vector stores to be loaded. Assumes `vectorstores` are stored in a directory called vectorstores with each vectorstore being named `{lang}_vector_store`.
+            languages (List[str]) : The languages of the vector stores to be loaded. Assumes `vectorstores` are stored in a directory called vector_stores with each vectorstore being named `{lang}_vector_store`.
         Returns:
             None
         """

@@ -16,9 +16,27 @@ from model_configuration import load_json, save_json
 import ntpath
 from typing_extensions import Literal, List, Tuple, Callable
 
+
+
+# Helper functions
 def path_leaf(path):
     head, tail = ntpath.split(path)
     return tail or ntpath.basename(head)
+
+def is_valid_chunk(text: str, min_length: int=30, text_threshold: float=0.15) -> bool:
+
+    # Check if chunk is too short
+    if len(text) < min_length:
+        return False
+
+    # Check if text content meets given threshold
+    letter_count = sum(c.isalpha() for c in text)
+    ratio = letter_count / text
+
+    if ratio < text_threshold:
+        return False
+    
+    return True
 
 def free_resources_doc_parser():
 
@@ -146,10 +164,13 @@ def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["lo
                 text = parse_document(fname)
             chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
             for doc in chunks:
-                doc.metadata['file_path'] = fname
-                doc.metadata['file_name'] = file_name
-                doc.metadata['language'] = detect(doc.page_content)
-                if doc.metadata['language'] not in languages: languages.append(doc.metadata['language'])
+                if is_valid_chunk(doc.page_content):
+                    doc.metadata['file_path'] = fname
+                    doc.metadata['file_name'] = file_name
+                    doc.metadata['language'] = detect(doc.page_content)
+                    if doc.metadata['language'] not in languages: languages.append(doc.metadata['language'])
+                else:
+                    continue
             documents.extend(chunks)
                 
     else:
@@ -159,9 +180,12 @@ def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["lo
             text = ''.join(doc.text for doc in docs)
             chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
             for doc in chunks:
-                doc.metadata['language'] = detect(doc.page_content)
-                doc.metadata['file_name'] = fname
-                if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
+                if is_valid_chunk(doc.page_content):
+                    doc.metadata['language'] = detect(doc.page_content)
+                    doc.metadata['file_name'] = fname
+                    if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
+                else:
+                    continue
             documents.extend(chunks)
     
     # Filter out empty documents
