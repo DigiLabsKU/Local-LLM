@@ -234,6 +234,7 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
                         else:
                             continue
                     documents.extend(chunks)
+
     # Parse urls if present
     if urls: 
         urls_documents = parse_url(urls)
@@ -243,7 +244,6 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
             if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
             documents.append(doc)
         documents.extend(urls_documents)
-        
 
     # Saving the list of unique document languages
     config = load_json("config.json")
