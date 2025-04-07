@@ -91,13 +91,16 @@ with st.sidebar:
             st.write("📄 Processing uploaded files...")
             temp_dir = tempfile.gettempdir()
             file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in uploaded_files]
+            for uploaded_file, file_path in zip(uploaded_files, file_paths):
+                with open(file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
 
         if uploaded_files or st.session_state.urls:
             st.session_state.multi_vector_store = vectorstore_pipeline(
                     embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
                     llm_model_name=selected_llm_model,
                     file_paths=file_paths if file_paths else [],
-                    urls=st.sesstion_state.urls,
+                    urls=st.session_state.urls,
                     parsing_method=selected_parsing_method,
                     use_gpu=False
                 )
