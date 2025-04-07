@@ -193,7 +193,7 @@ def load_vectorstore(embeddings_model_name: str, store_path: str="en_vector_stor
         faiss_store.index = gpu_index_flat
     return faiss_store
 
-def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_paths: list[str], parsing_method: Literal["local", "llama_index"] = "local", use_gpu: bool=False) -> CustomMultiVectorStore:
+def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_paths: list[str], urls: List[str]=[], parsing_method: Literal["local", "llama_index"] = "local", use_gpu: bool=False) -> CustomMultiVectorStore:
     """
     Pipeline for creating a CustomMultiVectorStore instance containing a vector store for each language in the provided files. 
     
@@ -204,6 +204,8 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_p
             The name of the llm model to use for the RAG.
         file_paths : List[str]
             The file paths of the PDFs to be parsed.
+        urls : List[str], optional
+            Optional: The URLs of the documents to be parsed.
         parsing_method : Literal
             Which parsing method to use, either "local" or "llama_index". Defaults to "local". 
         use_gpu : bool, optional
@@ -214,7 +216,7 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_p
         CustomMultiVectorStore : A class containing multiple vector stores in different languages. 
     """
     
-    documents, languages = parse_pipeline(file_paths, llm_model_name, parsing_method=parsing_method)
+    documents, languages = parse_pipeline(llm_model_name, file_paths, urls, parsing_method=parsing_method)
     vector_store = CustomMultiVectorStore(embeddings_model_name=embeddings_model_name, use_gpu=use_gpu)
     vector_store.create_vectorstores(documents, languages)
     
@@ -226,7 +228,7 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_p
     return vector_store
 
 
-def extend_multi_vector_store(multi_vector_store: CustomMultiVectorStore, llm_model_name: str, file_paths: List[str], parsing_method: Literal["local", "llama_index"] = "local") -> CustomMultiVectorStore:
+def extend_multi_vector_store(multi_vector_store: CustomMultiVectorStore, llm_model_name: str, file_paths: List[str], urls: List[str]=[], parsing_method: Literal["local", "llama_index"] = "local") -> CustomMultiVectorStore:
     """
     Extend an existing CustomMultiVectorStore instance with new documents. 
     
@@ -237,6 +239,8 @@ def extend_multi_vector_store(multi_vector_store: CustomMultiVectorStore, llm_mo
             The name of the llm model to use for the RAG.
         file_paths : List[str]
             The file paths of the PDFs to be parsed.
+        urls : List[str]
+            Optional: The URLs of the documents to be parsed.
         parsing_method : Literal
             Which parsing method to use, either "local" or "llama_index". Defaults to "local". 
     
@@ -244,7 +248,7 @@ def extend_multi_vector_store(multi_vector_store: CustomMultiVectorStore, llm_mo
         CustomMultiVectorStore : The extended multi_vector_store instance.
     """
 
-    documents, _ = parse_pipeline(file_paths, llm_model_name, parsing_method=parsing_method)
+    documents, _ = parse_pipeline(llm_model_name, file_paths, urls, parsing_method=parsing_method)
     multi_vector_store.extend_vectorstore(documents)
     
     # Free memory

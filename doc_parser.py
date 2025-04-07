@@ -15,6 +15,8 @@ from langdetect import detect
 from model_configuration import load_json, save_json
 import ntpath
 from typing_extensions import Literal, List, Tuple, Callable
+from langchain_community.document_loaders import AsyncHtmlLoader
+from langchain_community.document_transformers import MarkdownifyTransformer
 
 # Helper functions
 def path_leaf(path):
@@ -74,6 +76,7 @@ def parse_document(file_path: str):
     result = markitdown.convert(file_path)
     return result.text_content
 
+
 def parse_pdf_llama(file_path: str, format: str='markdown') -> List[Document]:
     parser = LlamaParse(result_type=format, api_key=os.environ.get('LLAMA_CLOUD_API_KEY'))
     file_extractor = {".pdf": parser, 
@@ -93,7 +96,13 @@ def parse_pdf_llama(file_path: str, format: str='markdown') -> List[Document]:
         
     return documents
 
-# Text Processing Functions
+def parse_url(urls: List[str]) -> List[Document]:
+    loader = AsyncHtmlLoader(urls)
+    docs = loader.load()
+    md = MarkdownifyTransformer(strip=["a"])
+    converted_docs = md.transform_documents(docs)
+    return converted_docs
+
 def token_len_fn(model_name: str) -> Callable[[str], int]:
     tokenizer = tiktoken.get_encoding('cl100k_base') if "gpt" in model_name else AutoTokenizer.from_pretrained(model_name)
     if "gpt" in model_name:
@@ -124,15 +133,17 @@ def chunk_text(text: str, token_fn: Callable[[str], int], chunk_size: int=1024, 
     return splitter.create_documents(splits)
 
 # Creating Pipeline
-def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["local", "llama_index"] = "local") -> Tuple[List[Document], List[str]]:
+def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing_method: Literal["local", "llama_index"] = "local") -> Tuple[List[Document], List[str]]:
     """
     Parses and chunks a list of PDF files using the provided converter and enrichment method.
     
     Args:
-        files : List[str]
-            A list of file paths
         model_name : str
             The name of the model to use for tokenization/conversation
+        files : List[str]
+            A list of file paths
+        urls: List[str]
+            An optional list of urls to parse 
         parsing_method : str
             A string specifying the method to use for parsing the PDFs, either "local" or "llama_index". Defaults to "local". 
         

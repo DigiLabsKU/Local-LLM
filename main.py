@@ -44,6 +44,9 @@ if 'memory' not in st.session_state:
 if 'messages' not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
 
+if 'urls' not in st.session_state:
+    st.session_state.urls = []
+
 # Sidebar UI
 with st.sidebar:
     st.title("💬 Local RAG")
@@ -61,6 +64,12 @@ with st.sidebar:
         selected_embeddings_model = st.selectbox("🔹 Select Embeddings Model", embeddings_models, index=embeddings_models.index(st.session_state.embeddings_model))
         selected_parsing_method = st.selectbox("🔹 Select Parsing Method", parsing_methods, index=parsing_methods.index(st.session_state.parsing_method))
         uploaded_files = st.file_uploader("📂 Upload PDFs", type=["pdf", "txt", "pptx", "docx", "HTML", "xls"], accept_multiple_files=True)
+        # Upload urls one by one
+        urls = st.text_input(label="🔗 Upload URLs here", value="", placeholder="Enter URLs (one per line)").split("\n")
+        if urls: 
+            urls = [url for url in urls if url != ""]
+            st.session_state.urls.extend(urls)
+        print(st.session_state.urls)
     
     else:
         recent_llm = list(config.get("llm_model", {}).keys())[0]
@@ -85,18 +94,20 @@ with st.sidebar:
             for uploaded_file, file_path in zip(uploaded_files, file_paths):
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
+
+        if uploaded_files or st.session_state.urls:
             st.session_state.multi_vector_store = vectorstore_pipeline(
-                embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
-                llm_model_name=selected_llm_model,
-                file_paths=file_paths,
-                parsing_method=selected_parsing_method,
-                use_gpu=False
-            )
+                    embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
+                    llm_model_name=selected_llm_model,
+                    file_paths=file_paths if file_paths else [],
+                    urls=st.session_state.urls,
+                    parsing_method=selected_parsing_method,
+                    use_gpu=False
+                )
             st.session_state.vectorstore_created = True
             st.success(f"✅ {st.session_state.multi_vector_store.num_vectorstores()} Vectorstore(s) created successfully!")
-
         else:
-            st.warning("⚠️ Please upload PDFs before creating a vectorstore.")
+            st.warning("⚠️ Please upload PDFs or URLs before creating a vectorstore.")
 
     if vectorstore_action == "Load Existing Vectorstore":
         load_btn = st.button("⚡ Load Vectorstore", disabled=st.session_state.vectorstore_created)
