@@ -70,7 +70,6 @@ def parse_document(file_path: str):
     Returns:
         str : The parsed Markdown text
     """
-
     markitdown = MarkItDown()
     result = markitdown.convert(file_path)
     return result.text_content
@@ -145,40 +144,49 @@ def parse_pipeline(files: List[str], model_name:str, parsing_method: Literal["lo
 
     """
     token_fn = token_len_fn(model_name)
-
     languages = []
 
     if parsing_method == "local": 
         documents : List[Document] = []
+        parse_attempts: int = 3
 
-        combined = '\t'.join(files)
-        if ".pdf" in combined: 
-            converter = create_converter()
-
-        for fname in files:
-            file_extension = os.path.splitext(fname)[1].lower()
-            file_name = path_leaf(fname)
-            if file_extension == ".pdf":
-                text = parse_pdf(converter, fname)
+        for i in range(parse_attempts): 
+            try:
+                print("Parsing attempt: ", i) 
+                combined = '\t'.join(files)
+                if ".pdf" in combined: 
+                    converter = create_converter()
+                for fname in files:
+                    file_extension = os.path.splitext(fname)[1].lower()
+                    file_name = path_leaf(fname)
+                    if file_extension == ".pdf":
+                        text = parse_pdf(converter, fname)
+                    else:
+                        text = parse_document(fname)
+                    chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
+                    for doc in chunks:
+                        if is_valid_chunk(doc.page_content):
+                            doc.metadata['file_path'] = fname
+                            doc.metadata['file_name'] = file_name
+                            doc.metadata['language'] = detect(doc.page_content)
+                            if doc.metadata['language'] not in languages: languages.append(doc.metadata['language'])
+                        else:
+                            continue
+                    documents.extend(chunks)
+            except Exception as e:
+                print(f"Parsing locally failed due to: {e}")
+                continue
             else:
-                text = parse_document(fname)
-            chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
-            for doc in chunks:
-                if is_valid_chunk(doc.page_content):
-                    doc.metadata['file_path'] = fname
-                    doc.metadata['file_name'] = file_name
-                    doc.metadata['language'] = detect(doc.page_content)
-                    if doc.metadata['language'] not in languages: languages.append(doc.metadata['language'])
-                else:
-                    continue
-            documents.extend(chunks)
-                
+                break
+
     else:
         documents : List[Document] = []
         for fname in files:
-            docs = parse_pdf_llama(fname)
-            if not docs:
+            try: 
+                docs = parse_pdf_llama(fname)
+            except Exception as e:
                 # LlamaParse failed the first time, so trying once more.
+                print(f"LlamaParse error raised: {e}")
                 docs = parse_pdf_llama(fname)
             if docs: 
                 text = ''.join(doc.text for doc in docs)
