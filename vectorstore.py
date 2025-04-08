@@ -67,7 +67,7 @@ class CustomMultiVectorStore:
     
     def extend_vectorstore(self, documents: List[Document]) -> None:
         """
-        Extends the current MultiVectorStore Instance with the given list of documents. Creates new vector store if a document with a new language is encountered. 
+        Extends the current MultiVectorStore instance with the given list of documents. Creates new vector store if a document with a new language is encountered. 
 
         Args: 
             List[Document] : The list of documents to add. 
@@ -81,16 +81,17 @@ class CustomMultiVectorStore:
         for doc in documents:
             lang = doc.metadata.get("language", "unknown")
             docs_by_lang[lang].append(doc)
-        
-        extended_langs = docs_by_lang.keys()
+
+        new_langs : List[str] = []
         
         # Check if new languages are present
         for lang in docs_by_lang.keys():
             if lang not in self.languages:
                 print(f"The following language: {lang} was not already present, creating a new vector store for it.")
 
-                # Add language to universal list
+                # Add language to universal list and new langs
                 self.languages.append(lang)
+                new_langs.append(lang)
 
                 # Create vector store
                 vector_store = create_vectorstore(self.embeddings_model_name, self.use_gpu)
@@ -99,16 +100,14 @@ class CustomMultiVectorStore:
                 # Add documents to the vector store
                 lang_docs = docs_by_lang[lang]
                 store_name = f'vector_stores/{lang_docs[0].metadata["language"]}_vector_store'
-                add_documents(vector_store, lang_docs, save=store_name)
+                add_documents(self.vectorstores[lang], lang_docs, save=store_name)
 
-                # Remove the docs from dict
-                del docs_by_lang[lang]
-        
         # Extend already existing vector store(s)
         for lang in docs_by_lang.keys():
-            add_documents(self.vectorstores[lang], docs_by_lang[lang], save=f"vectorstores/{lang}_vector_store", use_gpu=self.use_gpu)
+            if lang not in new_langs:
+                add_documents(self.vectorstores[lang], docs_by_lang[lang], save=f"vectorstores/{lang}_vector_store", use_gpu=self.use_gpu)
         
-        print(f"Extended the vector stores of the following langs {extended_langs}")
+        print(f"Extended the vector stores of the following langs {docs_by_lang.keys()}")
 
     def query_vectorstore(self, query: str, lang: str, k: int=4) -> None | List[Document]:
         """

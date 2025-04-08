@@ -147,12 +147,10 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
         parsing_method : str
             A string specifying the method to use for parsing the PDFs, either "local" or "llama_index". Defaults to "local". 
         
-    Returns
-        List[Document]: 
-            A list of chunks with additional metadata as Langchain Documents. 
-        List[str]:
-            A list of languages detected from the contents of the documents. 
+    Returns:
+        List[Document] : A list of chunks with additional metadata as Langchain Documents. 
 
+        List[str] : A list of languages detected from the contents of the documents.
     """
     token_fn = token_len_fn(model_name)
     languages = []
