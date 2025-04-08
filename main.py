@@ -92,7 +92,6 @@ with st.sidebar:
         config["parsing_method"] = selected_parsing_method
         if "gpt" not in selected_llm_model:
             selected_llm_model = available_models["llm_models"][selected_llm_model]["huggingface"]
-        save_json(CONFIG_FILE, config)
         
         if uploaded_files:
             st.write("📄 Processing uploaded files...")
@@ -101,6 +100,9 @@ with st.sidebar:
             for uploaded_file, file_path in zip(uploaded_files, file_paths):
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
+            config["file_paths"] = file_paths
+        
+        save_json(CONFIG_FILE, config)
 
         if uploaded_files or st.session_state.urls:
             st.session_state.multi_vector_store = vectorstore_pipeline(

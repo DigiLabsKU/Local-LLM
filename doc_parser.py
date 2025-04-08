@@ -18,6 +18,9 @@ from typing_extensions import Literal, List, Tuple, Callable
 from langchain_community.document_loaders import AsyncHtmlLoader
 from langchain_community.document_transformers import MarkdownifyTransformer
 
+CONVERTER = None
+CONFIG_FILE = "config.json"
+
 # Helper functions
 def path_leaf(path):
     head, tail = ntpath.split(path)
@@ -152,103 +155,105 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
             - A list of chunks from the parsed files in Langchain Documents format. 
             - A list of languages detected from the provided files. 
     """
+    global CONVERTER
+
     token_fn = token_len_fn(model_name)
+    documents : List[Document] = []
     languages = []
 
-    if parsing_method == "local": 
-        documents : List[Document] = []
-        parse_attempts: int = 3
+    # Check if we need to load marker-pdf
+    if parsing_method == "local" and any(fp.lower().endswith(".pdf") for fp in files):
+        CONVERTER = create_converter()
 
-        for i in range(parse_attempts): 
+    def _parse_single_file(file_path: str) -> List[Document]:
+        """Parse and chunk a single file"""
+        file_extension = os.path.splitext(file_path)[1].lower()
+        file_name = path_leaf(file_path)
+
+        # Try parsing
+        text = None
+
+        # Parsing using LlamaParse
+        if parsing_method == "llama_index":
             try:
-                print("Parsing attempt: ", i) 
-                combined = '\t'.join(files)
-                if ".pdf" in combined: 
-                    converter = create_converter()
-                for fname in files:
-                    file_extension = os.path.splitext(fname)[1].lower()
-                    file_name = path_leaf(fname)
-                    if file_extension == ".pdf":
-                        text = parse_pdf(converter, fname)
-                    else:
-                        text = parse_document(fname)
-                    chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
-                    for doc in chunks:
-                        if is_valid_chunk(doc.page_content):
-                            doc.metadata['file_path'] = fname
-                            doc.metadata['file_name'] = file_name
-                            doc.metadata['language'] = detect(doc.page_content)
-                            if doc.metadata['language'] not in languages: languages.append(doc.metadata['language'])
-                        else:
-                            continue
-                    documents.extend(chunks)
+                parsed_docs = parse_pdf_llama(file_path)
+                text = ''.join(doc.text for doc in parsed_docs)
             except Exception as e:
-                print(f"Parsing locally failed due to: {e}")
-                continue
-            else:
-                break
+                print(f"[LlamaParse] failed for {file_path}: {e}")
 
-    else:
-        documents : List[Document] = []
-        for fname in files:
-            try: 
-                docs = parse_pdf_llama(fname)
+        # Parsing locally
+        if not text:
+            try:
+                if file_extension == ".pdf":
+                    if CONVERTER is None:
+                        print("[INFO] Converter was not already initialized. Loading marker-pdf...")
+                        CONVERTER = create_converter()
+                    text = parse_pdf(converter=CONVERTER, filename=file_path)
+                else:
+                    text = parse_document(file_path)
             except Exception as e:
-                # LlamaParse failed the first time, so trying once more.
-                print(f"LlamaParse error raised: {e}")
-                docs = parse_pdf_llama(fname)
-            if docs: 
-                text = ''.join(doc.text for doc in docs)
-                chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
-                for doc in chunks:
-                    if is_valid_chunk(doc.page_content):
-                        doc.metadata['language'] = detect(doc.page_content)
-                        doc.metadata['file_name'] = fname
-                        if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
-                    else:
-                        continue
-                documents.extend(chunks)
-            # If LlamaParse failed -> fall back to local
-            else:
-                print("LlamaParse failed again to parse the documents falling back to local parsing method.\n")
-                combined = '\t'.join(files)
-                if ".pdf" in combined: 
-                    converter = create_converter()
+                print(f"[Local Parsing] failed for {file_path}: {e}")
+                return []
 
-                for fname in files:
-                    file_extension = os.path.splitext(fname)[1].lower()
-                    file_name = path_leaf(fname)
-                    if file_extension == ".pdf":
-                        text = parse_pdf(converter, fname)
-                    else:
-                        text = parse_document(fname)
-                    chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
-                    for doc in chunks:
-                        if is_valid_chunk(doc.page_content):
-                            doc.metadata['file_path'] = fname
-                            doc.metadata['file_name'] = file_name
-                            doc.metadata['language'] = detect(doc.page_content)
-                            if doc.metadata['language'] not in languages: languages.append(doc.metadata['language'])
-                        else:
-                            continue
-                    documents.extend(chunks)
+        chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
 
-    # Parse urls if present
+        # Validate and tag chunks
+        valid_chunks = []
+        for chunk in chunks:
+            if is_valid_chunk(chunk.page_content):
+                try:
+                    lang = detect(chunk.page_content)
+                except Exception as e:
+                    print(f"[Language Detection] failed for chunk: {chunk} in file {file_path}: {e}")
+                    lang = "english" # Fall back to english for now
+                chunk.metadata.update({
+                    'file_path' : file_path,
+                    'file_name' : file_name,
+                    'language' : lang,
+                })
+                if lang not in languages and lang != "unkown":
+                    languages.append(lang)
+                valid_chunks.append(chunk)
+    
+        return valid_chunks
+    
+    # Parse files
+    for fp in files:
+        f_docs = _parse_single_file(fp)
+        documents.extend(f_docs)
+    
+    # Parse urls
     if urls: 
-        urls_documents = parse_url(urls)
-        for doc in urls_documents:
-            doc.metadata['file_name'] = "URL"
-            doc.metadata['language'] = detect(doc.page_content)
-            if doc.metadata['language'] not in languages and doc.metadata['language'] is not None: languages.append(doc.metadata['language'])
-            documents.append(doc)
-        documents.extend(urls_documents)
-
-    # Saving the list of unique document languages
-    config = load_json("config.json")
-    config["languages"] = languages
-    save_json("config.json", config)
+        try:
+            url_docs = parse_url(urls)
+            for doc, url in zip(url_docs, urls):
+                # Validate doc
+                if is_valid_chunk(doc.page_content):
+                    try:
+                        lang = detect(doc.page_content)
+                    except Exception as e:
+                        print(f"[Language Detection] failed on chunk {doc}: {e}")
+                        lang = "english" # Fall back to english for now
+                    doc.metadata.update({
+                        'file_name': url,
+                        'file_path': url,
+                        'language' : lang
+                    })
+                    if lang not in languages and lang != "unkown":
+                        languages.append(lang)
+                    documents.append(doc)
+        except Exception as e:
+            print(f"[URL Parsing] failed : {e}")
+    
+    # Saving detected languages
+    config = load_json(CONFIG_FILE)
+    config["lanugages"] = languages
+    save_json(CONFIG_FILE, config)
 
     return documents, languages
+
+
+
 
 if __name__ == "__main__":
     parse_pipeline(files=["data/ComIt_MA_2022.pdf"], 
