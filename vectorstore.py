@@ -134,6 +134,9 @@ class CustomMultiVectorStore:
     def num_vectorstores(self):
         return len(self.vectorstores)
 
+    def get_store_path(self, lang: str) -> str:
+        return f"vector_stores/{lang}_vector_store"
+
 def create_vectorstore(embeddings_model_name: str, use_gpu: bool=False) -> FAISS:
     if "text-embedding-3" in embeddings_model_name:
         embeddings_model = OpenAIEmbeddings(model=embeddings_model_name)
@@ -197,17 +200,17 @@ def vectorstore_pipeline(embeddings_model_name: str, llm_model_name: str, file_p
     Pipeline for creating a CustomMultiVectorStore instance containing a vector store for each language in the provided files. 
     
     Args:
-        embeddings_model_name : str
+        embeddings_model_name (str) : 
             The name of the local embeddings model to use.
-        llm_model_name : str
+        llm_model_name (str) : 
             The name of the llm model to use for the RAG.
-        file_paths : List[str]
+        file_paths (List[str]) : 
             The file paths of the PDFs to be parsed.
-        urls : List[str], optional
+        urls (List[str]) :
             Optional: The URLs of the documents to be parsed.
-        parsing_method : Literal
+        parsing_method (Literal) : 
             Which parsing method to use, either "local" or "llama_index". Defaults to "local". 
-        use_gpu : bool, optional
+        use_gpu (bool) :
             - If True, use GPU for vectorization else CPU for vectorization. 
             - Default: False
     
@@ -232,15 +235,15 @@ def extend_multi_vector_store(multi_vector_store: CustomMultiVectorStore, llm_mo
     Extend an existing CustomMultiVectorStore instance with new documents. 
     
     Args:
-        multi_vector_store : CustomMultiVectorStore
+        multi_vector_store (CustomMultiVectorStore) : 
             The multi_vector_store instance to extend
-        llm_model_name : str
+        llm_model_name (str) : 
             The name of the llm model to use for the RAG.
-        file_paths : List[str]
+        file_paths (List[str]) : 
             The file paths of the PDFs to be parsed.
-        urls : List[str]
+        urls (List[str]) : 
             Optional: The URLs of the documents to be parsed.
-        parsing_method : Literal
+        parsing_method (Literal) :
             Which parsing method to use, either "local" or "llama_index". Defaults to "local". 
     
     Returns:

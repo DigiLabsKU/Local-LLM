@@ -67,7 +67,7 @@ def parse_document(file_path: str):
     Parses various other document formats and converts to Markdown. 
 
     Args:
-        file_path : str
+        file_path (str) :
             The file path of the document to be parsed
     Returns:
         str : The parsed Markdown text
@@ -138,19 +138,19 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
     Parses and chunks a list of PDF files using the provided converter and enrichment method.
     
     Args:
-        model_name : str
+        model_name (str) : 
             The name of the model to use for tokenization/conversation
-        files : List[str]
+        files (List[str]) : 
             A list of file paths
-        urls: List[str]
+        urls (List[str]) : 
             An optional list of urls to parse 
-        parsing_method : str
+        parsing_method (str) : 
             A string specifying the method to use for parsing the PDFs, either "local" or "llama_index". Defaults to "local". 
         
     Returns:
-        List[Document] : A list of chunks with additional metadata as Langchain Documents. 
-
-        List[str] : A list of languages detected from the contents of the documents.
+        tuple (List[Document], List[str]):
+            - A list of chunks from the parsed files in Langchain Documents format. 
+            - A list of languages detected from the provided files. 
     """
     token_fn = token_len_fn(model_name)
     languages = []
