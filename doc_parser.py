@@ -167,6 +167,7 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
 
     def _parse_single_file(file_path: str) -> List[Document]:
         """Parse and chunk a single file"""
+        global CONVERTER
         file_extension = os.path.splitext(file_path)[1].lower()
         file_name = path_leaf(file_path)
 
@@ -257,5 +258,5 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
 
 if __name__ == "__main__":
     parse_pipeline(files=["data/ComIt_MA_2022.pdf"], 
-                   model="gpt-4o",
+                   model_name="gpt-4o",
                    parsing_method="local")
