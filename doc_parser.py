@@ -19,6 +19,7 @@ from langchain_community.document_loaders import AsyncHtmlLoader
 from langchain_community.document_transformers import MarkdownifyTransformer
 import requests
 import tempfile
+import hashlib
 
 CONVERTER = None
 CONFIG_FILE = "config.json"
@@ -49,6 +50,9 @@ def is_valid_chunk(text: str, min_length: int=30, text_threshold: float=0.15) ->
         return False
     
     return True
+
+def hash_document(doc: Document) -> str:
+    return hashlib.sha256(doc.page_content.encode("utf-8")).hexdigest()
 
 def free_resources_doc_parser():
 
@@ -316,6 +320,10 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
         docs, url_langs = parse_url(urls, token_fn=token_fn, parsing_method=parsing_method)
         documents.extend(docs)
         languages.extend(url_langs)
+    
+    # Add unique has for each document as metadata (Used for preventing duplicates)
+    for doc in documents:
+        doc.metadata['content_hash'] = hash_document(doc=doc)
     
     # Erasing duplicate languages if any
     languages = list(set(languages))
