@@ -206,7 +206,7 @@ def parse_url(urls: List[str], token_fn: Callable[[str], int], parsing_method: L
         converted_docs = md.transform_documents(docs)
         # Chunk the docs
         for doc in converted_docs: 
-            chunks = chunk_text(doc.page_contet, token_fn=token_fn, chunk_size=1024, chunk_overlap=256)
+            chunks = chunk_text(doc.page_content, token_fn=token_fn, chunk_size=1024, chunk_overlap=256)
             # Add metadata
             for chunk in chunks:
                 # Filter out non-useful chunks, i.e. too short or no text content
@@ -216,10 +216,13 @@ def parse_url(urls: List[str], token_fn: Callable[[str], int], parsing_method: L
                     except Exception as e:
                         print(f"[Language Detection] failed on chunk {chunk}: {e}")
                         lang = "english" # Fall back to english for now
+                    # Generate unique hash for document
+                    content_hash = hash_document(chunk)
                     chunk.metadata.update({
                         'file_name' : url,
                         'file_path' : url,
                         'language'  : lang,
+                        'content_hash' : content_hash,
                     })
                     if lang not in languages and lang != "unkown":
                         languages.append(lang)

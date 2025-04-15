@@ -32,7 +32,7 @@ class CustomMultiVectorStore:
         for doc in documents:
             lang = doc.metadata.get("language", "unknown")
             docs_by_lang[lang].append(doc)
-            self.content_hashes.add(doc.metadata.content_hash)
+            self.content_hashes.add(doc.metadata['content_hash'])
         
         for lang in languages:
             if lang not in docs_by_lang:
@@ -61,8 +61,11 @@ class CustomMultiVectorStore:
             self.vectorstores[lang] = load_vectorstore(self.embeddings_model_name, store_path=store_name, use_gpu=self.use_gpu)
             print(f"Loaded vector store for {lang}")
             # Build hash set of document content
-            for doc in self.vectorstores[lang]:
-                self.content_hashes.add(doc.metadata.content_hash)
+            docstore = self.vectorstores[lang].docstore
+            for doc_id in docstore._dict:
+                doc = docstore._dict[doc_id]                
+                if 'content_hash'in doc.metadata:
+                    self.content_hashes.add(doc.metadata['content_hash'])
     
     def delete_vectorstore(self, lang: str) -> None:
         if lang in self.vectorstores:
@@ -87,11 +90,11 @@ class CustomMultiVectorStore:
         for doc in documents:
             lang = doc.metadata.get("language", "unknown")
             # Only add document if its hash is not already present in the set of hashes, prevents duplicate documents. 
-            if doc.metadata.content_hash and doc.metadata.content_hash not in self.content_hashes:
+            if doc.metadata['content_hash'] and doc.metadata['content_hash'] not in self.content_hashes:
                 docs_by_lang[lang].append(doc)
-                self.content_hashes.add(doc.metadata.content_hash)
+                self.content_hashes.add(doc.metadata['content_hash'])
             else:
-                print(f"Skipping document with hash {doc.metadata.content_hash} (duplicate detected).")
+                print(f"Skipping document with hash {doc.metadata['content_hash']} (duplicate detected).")
                 continue
 
         new_langs : List[str] = []

@@ -1,9 +1,12 @@
 {
     "llm_model": {
-        "gpt-4o": {}
+        "phi-4": {
+            "ollama": "phi4",
+            "huggingface": "microsoft/phi-4"
+        }
     },
     "embeddings_model": {
-        "gpt-large": "text-embedding-3-large"
+        "large": "intfloat/multilingual-e5-large-instruct"
     },
     "load_exising_vectorstore": true,
     "parsing_method": "local",
@@ -12,5 +15,20 @@
     ],
     "lanugages": [
         "en"
+    ],
+    "file_paths": [
+        "/tmp/CogCom_KA_2019_adj_2019+2020+2021+2022+2024_cor_2021.pdf",
+        "/tmp/ComIT_BA_2019_ame_2019_2021_2021_2_2022.pdf",
+        "/tmp/ComIt_MA_2022.pdf",
+        "/tmp/Film-_og_medie_BA_2019_just19_20_21_22_2_ret19_og_rev24.pdf",
+        "/tmp/Filosofi_BA_2019_just_2019+2022.pdf",
+        "/tmp/Filosofi_KA_2022_just_2024.pdf",
+        "/tmp/Informationsstudier_BA_2019_just_2020_2021_2022_og_2024.pdf",
+        "/tmp/Informationsvidenskab_og_kulturformidling_KA_2021_just_2022_2+2023+2024_ret_23.pdf",
+        "/tmp/Master's_Programme_in_Film_and_Media_Studies_2019_adj19+20_2+21+22_2+24_cor21.pdf",
+        "/tmp/P\u00e6dagogik_BA_2019_just_2019_2021_2022_og_2024_2.pdf",
+        "/tmp/P\u00e6dagogik_KA_2020_ret_2021_just_2021+2022+2024.pdf",
+        "/tmp/Retorik_BA_2019_just_19_2+22+24_ret_20_rev._21+22.pdf",
+        "/tmp/Retorik_KA_2019_just_19__20__22+24_rev._20+22_ret._21.pdf"
     ]
 }

@@ -67,7 +67,7 @@ with st.sidebar:
         st.session_state.memory = MemorySaver() # Reintialize memory
         st.success("🗑️ Conversation history cleared!")
 
-    vectorstore_action = st.radio("Choose an action", ("Create Vectorstore", "Load Existing Vectorstore"))
+    vectorstore_action = st.radio("Choose an action", ("Create Vectorstore", "Load Existing Vectorstore", "Extend Vectorstore"))
     
     if vectorstore_action == "Create Vectorstore":
         selected_llm_model = st.selectbox("🔹 Select LLM Model", llm_models, index=llm_models.index(st.session_state.llm_model))
@@ -77,8 +77,9 @@ with st.sidebar:
         # Upload urls one by one
         st.text_input(label="🔗 Upload URLs here", key="widget", placeholder="Enter URLs (one per line)",
                              on_change=submit)
+        file_paths = []
     
-    else:
+    elif vectorstore_action == "Load Existing Vectorstore":
         recent_llm = list(config.get("llm_model", {}).keys())[0]
         recent_embeddings = config.get("embeddings_model", {}).get(st.session_state.embeddings_model, "")
         
@@ -104,7 +105,7 @@ with st.sidebar:
         
         save_json(CONFIG_FILE, config)
 
-        if uploaded_files or st.session_state.urls:
+        if uploaded_files or st.session_state.uploaded_urls:
             st.session_state.multi_vector_store = vectorstore_pipeline(
                     embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
                     llm_model_name=selected_llm_model,
@@ -133,36 +134,38 @@ with st.sidebar:
                 st.success(f"✅ Loaded existing {st.session_state.multi_vector_store.num_vectorstores()} vectorstore(s) successfully!")
             except FileNotFoundError:
                 st.error("❌ Vectorstore not found. Please create a vectorstore first.")
-            except Exception as e:
-                st.error(f"❌ Failed to load vectorstore: {e}")
 
-        # If already loaded, offer to extend it
-        if st.session_state.vectorstore_created:
-            st.markdown("### ➕ Extend Loaded Vector Store")
-            extension_files = st.file_uploader("📂 Upload Files to Extend Vectorstore", type=["pdf", "txt", "pptx", "docx", "HTML", "xls"], accept_multiple_files=True, key="extend_uploader")
-            if st.button("📌 Extend Vector Store"):
-                if extension_files:
-                    temp_dir = tempfile.gettempdir()
-                    file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in extension_files]
-                    for uploaded_file, file_path in zip(extension_files, file_paths):
-                        with open(file_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
 
-                    config = load_json(CONFIG_FILE)
-                    recent_llm = list(config.get("llm_model", {}).keys())[0]
+    # If already created/loaded, extend the vectorstore
+    if vectorstore_action =="Extend Vectorstore":
+        st.markdown("### ➕ Extend Loaded Vector Store")
+        extension_files = st.file_uploader("📂 Upload Files to Extend Vectorstore", type=["pdf", "txt", "pptx", "docx", "HTML", "xls"], accept_multiple_files=True, key="extend_uploader")
+        extend_vector_store_btn = st.button("📌 Extend Vector Store")
+        if extend_vector_store_btn and st.session_state.vectorstore_created:
+            if extension_files:
+                temp_dir = tempfile.gettempdir()
+                file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in extension_files]
+                for uploaded_file, file_path in zip(extension_files, file_paths):
+                    with open(file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
 
-                    st.session_state.multi_vector_store = extend_multi_vector_store(
-                        st.session_state.multi_vector_store,
-                        llm_model_name=recent_llm["hugging_face"],
-                        file_paths=file_paths,
-                        parsing_method=config.get("parsing_method", "local")
-                    )
+                config = load_json(CONFIG_FILE)
+                recent_llm = list(config.get("llm_model", {}).keys())[0]
 
-                    from rag import initialize_graph
-                    graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
-                    st.success("✅ Vectorstore extended successfully!")
-                else:
-                    st.warning("⚠️ Please upload files to extend the vectorstore.")
+                st.session_state.multi_vector_store = extend_multi_vector_store(
+                    st.session_state.multi_vector_store,
+                    llm_model_name=recent_llm["hugging_face"],
+                    file_paths=file_paths,
+                    parsing_method=config.get("parsing_method", "local")
+                )
+
+                from rag import initialize_graph
+                graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
+                st.success("✅ Vectorstore extended successfully!")
+            else:
+                st.warning("⚠️ Please upload files to extend the vectorstore.")
+        if extend_vector_store_btn and not st.session_state.vectorstore_created:
+            st.warning("⚠️ Please create a vector store or load an already existing one before trying to extend.")
 
     # Initializing Graph
     if st.session_state.vectorstore_created:
