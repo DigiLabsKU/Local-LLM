@@ -113,6 +113,14 @@ with st.sidebar:
                     parsing_method=selected_parsing_method,
                     use_gpu=False
                 )
+        
+            # Intialize RAG with clean memory
+            st.session_state.memory = MemorySaver()
+            st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+
+            from rag import initialize_graph
+            graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
+            print("[Creating Vector Store] RAG Intialized with clean memory")
             st.session_state.vectorstore_created = True
             st.success(f"✅ {st.session_state.multi_vector_store.num_vectorstores()} Vectorstore(s) created successfully!")
         else:
@@ -129,6 +137,12 @@ with st.sidebar:
                     languages=languages
                 )
                 st.session_state.multi_vector_store.load_vectorstores(languages)
+
+                # Intialize rag with loaded vector store
+                from rag import initialize_graph
+                graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
+                print("[Loading Vector Store] RAG Initialized with loaded vector store")
+
                 st.session_state.vectorstore_created = True
                 st.success(f"✅ Loaded existing {st.session_state.multi_vector_store.num_vectorstores()} vectorstore(s) successfully!")
             except FileNotFoundError:
@@ -163,11 +177,6 @@ with st.sidebar:
                     st.success("✅ Vectorstore extended successfully!")
                 else:
                     st.warning("⚠️ Please upload files to extend the vectorstore.")
-
-    # Initializing Graph
-    if st.session_state.vectorstore_created:
-        from rag import initialize_graph
-        graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
 
 # Chat UI
 for message in st.session_state.messages:
