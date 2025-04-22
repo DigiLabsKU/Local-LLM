@@ -50,11 +50,21 @@ if 'urls' not in st.session_state:
 if 'uploaded_urls' not in st.session_state:
     st.session_state.uploaded_urls = []
 
+if 'extend_urls' not in st.session_state:
+    st.session_state.extend_urls = []
+
+
 def submit():
     st.session_state.uploaded_urls.extend(st.session_state.widget.split("\n"))
     st.session_state.uploaded_urls = list(set(st.session_state.uploaded_urls))
     print(st.session_state.uploaded_urls)
     st.session_state.widget = ''
+
+def submit2():
+    st.session_state.extend_urls.extend(st.session_state.widget2.split("\n"))
+    st.session_state.extend_urls = list(set(st.session_state.extend_urls))
+    print(st.session_state.extend_urls)
+    st.session_state.widget2 = ''
 
 
 # Sidebar UI
@@ -137,9 +147,16 @@ with st.sidebar:
 
 
     # If already created/loaded, extend the vectorstore
-    if vectorstore_action =="Extend Vectorstore":
+    if vectorstore_action == "Extend Vectorstore":
         st.markdown("### ➕ Extend Loaded Vector Store")
+        
+        # Upload Files and URLs
         extension_files = st.file_uploader("📂 Upload Files to Extend Vectorstore", type=["pdf", "txt", "pptx", "docx", "HTML", "xls"], accept_multiple_files=True, key="extend_uploader")
+        # Upload urls one by one
+        st.text_input(label="🔗 Upload URLs here", key="widget2", placeholder="Enter URLs (one per line)",
+                             on_change=submit)
+        file_paths = []
+        
         extend_vector_store_btn = st.button("📌 Extend Vector Store")
         if extend_vector_store_btn and st.session_state.vectorstore_created:
             if extension_files:
@@ -156,6 +173,7 @@ with st.sidebar:
                     st.session_state.multi_vector_store,
                     llm_model_name=recent_llm["hugging_face"],
                     file_paths=file_paths,
+                    urls=st.session_state.extend_urls
                     parsing_method=config.get("parsing_method", "local")
                 )
 
