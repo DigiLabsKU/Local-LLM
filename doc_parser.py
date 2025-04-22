@@ -108,7 +108,7 @@ def parse_pdf_llama(file_path: str, format: str='markdown') -> List[Document]:
             file_extractor=file_extractor).load_data()
     except Exception as e:
         print(f"Failed to load documents: {e}\n")
-        
+        documents = [] 
         
     return documents
 
@@ -141,7 +141,7 @@ def _parse_single_file(file_path: str, languages: List[str], token_fn: Callable[
                     text = parse_document(file_path)
             except Exception as e:
                 print(f"[Local Parsing] failed for {file_path}: {e}")
-                return []
+                return ([], [])
 
         chunks = chunk_text(text, token_fn, chunk_size=1024, chunk_overlap=256)
 
@@ -239,7 +239,7 @@ def parse_url(urls: List[str], token_fn: Callable[[str], int], parsing_method: L
                 tmp_file.write(response.content)
                 tmp_path = tmp_file.name
             
-            parsed_chunks, langs = _parse_single_file(tmp_path, languages=languages, token_fn=token_fn, parsing_method=parsing_method, is_url=True)
+            parsed_chunks, langs = _parse_single_file(tmp_path, languages=languages, token_fn=token_fn, parsing_method=parsing_method)
             languages.extend(langs)
             for chunk in parsed_chunks:
                 chunk.metadata.update({
@@ -314,7 +314,7 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
     
     # Parse files
     for fp in files:
-        f_docs, file_langs = _parse_single_file(fp, languages=languages, token_fn=token_fn, parsing_method=parsing_method, is_url=False)
+        f_docs, file_langs = _parse_single_file(fp, languages=languages, token_fn=token_fn, parsing_method=parsing_method)
         documents.extend(f_docs)
         languages = file_langs
     

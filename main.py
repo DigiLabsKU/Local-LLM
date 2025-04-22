@@ -154,7 +154,7 @@ with st.sidebar:
         extension_files = st.file_uploader("📂 Upload Files to Extend Vectorstore", type=["pdf", "txt", "pptx", "docx", "HTML", "xls"], accept_multiple_files=True, key="extend_uploader")
         # Upload urls one by one
         st.text_input(label="🔗 Upload URLs here", key="widget2", placeholder="Enter URLs (one per line)",
-                             on_change=submit)
+                             on_change=submit2)
         file_paths = []
         
         extend_vector_store_btn = st.button("📌 Extend Vector Store")
@@ -168,10 +168,10 @@ with st.sidebar:
 
                 config = load_json(CONFIG_FILE)
                 recent_llm = list(config.get("llm_model", {}).keys())[0]
-
+                
                 st.session_state.multi_vector_store = extend_multi_vector_store(
                     st.session_state.multi_vector_store,
-                    llm_model_name=recent_llm["hugging_face"],
+                    llm_model_name=recent_llm if "gpt" in recent_llm else recent_llm["hugging_face"],
                     file_paths=file_paths,
                     urls=st.session_state.extend_urls,
                     parsing_method=config.get("parsing_method", "local")
