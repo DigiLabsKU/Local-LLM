@@ -173,7 +173,7 @@ with st.sidebar:
                     st.session_state.multi_vector_store,
                     llm_model_name=recent_llm["hugging_face"],
                     file_paths=file_paths,
-                    urls=st.session_state.extend_urls
+                    urls=st.session_state.extend_urls,
                     parsing_method=config.get("parsing_method", "local")
                 )
 
