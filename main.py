@@ -6,6 +6,7 @@ from model_configuration import load_json, save_json
 from langgraph.checkpoint.memory import MemorySaver
 from datetime import datetime
 import tempfile
+from typing_extensions import Any
 
 # File paths
 AVAILABLE_MODELS_FILE = "available_models.json"
@@ -35,23 +36,36 @@ if 'llm_model' not in st.session_state or 'embeddings_model' not in st.session_s
         st.session_state.embeddings_model = embeddings_models[0] if embeddings_models else None
         st.session_state.parsing_method = parsing_methods[1]
 
-if 'vectorstore_created' not in st.session_state:
-    st.session_state.vectorstore_created = False
+session_vars = {
+    "vectorstore_created"   : False,
+    "vectorstore_extended"  : False,
+    "memory"                : MemorySaver(),
+    "messages"              : [{"role": "assistant", "content": "How may I assist you today?"}],
+    "urls"                  : [],
+    "uploaded_urls"         : [],
+    "extend_urls"           : [],
+}
 
-if 'memory' not in st.session_state:
-    st.session_state.memory = MemorySaver()
+def create_session_var(var_name: str, var_value: Any) -> bool:
+    """
+    Creates a variable with the given name and values in the session_state.
+    Returns true if variable was not already in state and thus created, false otherwise.
+    """
 
-if 'messages' not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+    if var_name not in st.session_state:
+        setattr(st.session_state, var_name, var_value)
+        return True
+    
+    return False
 
-if 'urls' not in st.session_state:
-    st.session_state.urls = []
-
-if 'uploaded_urls' not in st.session_state:
-    st.session_state.uploaded_urls = []
-
-if 'extend_urls' not in st.session_state:
-    st.session_state.extend_urls = []
+# Intialize session_state vars:
+print(f"[Intializing session variables]: {len(session_vars)} vars in session_vars dict") 
+for key, value in session_vars.items():
+    created = create_session_var(key, value)
+    if created:
+        print(f"\t[Initializing sesssion variables] Added following variable: {key} with the values {value} to the session_state.\n")
+    else:
+        print(f"\t[Initializing session variables] Could not add variable: {key} with values: {value} to session_state.\n")
 
 
 def submit():
@@ -177,8 +191,7 @@ with st.sidebar:
                     parsing_method=config.get("parsing_method", "local")
                 )
 
-                from rag import initialize_graph
-                graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
+                st.session_state.vectorstore_extended = True
                 st.success("✅ Vectorstore extended successfully!")
             else:
                 st.warning("⚠️ Please upload files to extend the vectorstore.")
@@ -186,7 +199,8 @@ with st.sidebar:
             st.warning("⚠️ Please create a vector store or load an already existing one before trying to extend.")
 
     # Initializing Graph
-    if st.session_state.vectorstore_created:
+    if st.session_state.vectorstore_created or st.session_state.vectorstore_extended:
+        print("[Intializing Graph (main.py)] Creating new graph since vectorstore creation/extension detected!\n")
         from rag import initialize_graph
         graph, config = initialize_graph(st.session_state.multi_vector_store, st.session_state.memory)
 
