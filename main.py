@@ -36,6 +36,9 @@ if 'llm_model' not in st.session_state or 'embeddings_model' not in st.session_s
         st.session_state.embeddings_model = embeddings_models[0] if embeddings_models else None
         st.session_state.parsing_method = parsing_methods[1]
 
+if 'session_vars_initialized' not in st.session_state:
+    st.session_state.session_vars_initialized = False
+
 session_vars = {
     "vectorstore_created"   : False,
     "vectorstore_extended"  : False,
@@ -58,15 +61,16 @@ def create_session_var(var_name: str, var_value: Any) -> bool:
     
     return False
 
-# Intialize session_state vars:
-print(f"[Intializing session variables]: {len(session_vars)} vars in session_vars dict") 
-for key, value in session_vars.items():
-    created = create_session_var(key, value)
-    if created:
-        print(f"\t[Initializing sesssion variables] Added following variable: {key} with the values {value} to the session_state.\n")
-    else:
-        print(f"\t[Initializing session variables] Could not add variable: {key} with values: {value} to session_state.\n")
-
+# Intialize session_state variables
+if not st.session_state.session_vars_initialized: 
+    print(f"[Initializing session variables]: {len(session_vars)} vars in session_vars dict")
+    for key, value in session_vars.items():
+        created = create_session_var(key, value)
+        if created:
+            print(f"\t[Initializing sesssion variables] Added following variable: {key} with the values {value} to the session_state.\n")
+        else:
+            print(f"\t[Initializing session variables] Could not add variable: {key} with values: {value} to session_state.\n")
+    st.session_state.session_vars_initialized = True
 
 def submit():
     st.session_state.uploaded_urls.extend(st.session_state.widget.split("\n"))
