@@ -167,11 +167,12 @@ with st.sidebar:
                         f.write(uploaded_file.getbuffer())
 
                 config = load_json(CONFIG_FILE)
-                recent_llm = list(config.get("llm_model", {}).keys())[0]
+                recent_llm = config.get("llm_model", {})
+                print(f"\n\n\n\n{recent_llm} {recent_llm.keys()}\n\n\n\n")
                 
                 st.session_state.multi_vector_store = extend_multi_vector_store(
                     st.session_state.multi_vector_store,
-                    llm_model_name=recent_llm if "gpt" in recent_llm else recent_llm["hugging_face"],
+                    llm_model_name=list(recent_llm.keys())[0] if "gpt" in list(recent_llm.keys())[0] else recent_llm["huggingface"],
                     file_paths=file_paths,
                     urls=st.session_state.extend_urls,
                     parsing_method=config.get("parsing_method", "local")
