@@ -56,6 +56,46 @@ if "text-embedding-3" in embeddings_model_name:
 else:
     embeddings_model = LocalEmbeddings(embeddings_model_name)
 
+
+# Helper Functions
+
+def format_docs(docs: List[Document]) -> str:
+    return "\n\n".join(doc.page_content for doc in docs)
+
+def clean_response(response: Dict[str, Any]) -> Dict[str, Any]:
+    match = re.search(r'```json(.*?)```', response.content, re.DOTALL)
+    if match:
+        cleaned_response = match.group(1).strip()
+        response.content = cleaned_response
+    return response
+
+
+def extract_sources(documents: List[Document]) -> List[str]:
+    seen_paths = set()
+    sources = []
+
+    for doc in documents:
+        f_name = doc.metadata.get("file_name", "Unkown Source")
+        f_path = doc.metadata.get("file_path", "")
+
+        if f_path not in seen_paths:
+            seen_paths.add(f_path)
+        
+            if f_path.startswith("http"):
+                sources.append(f"[{f_name}]({f_path})")
+            else:
+                sources.append(f"`{f_name}`")
+    
+    return sources
+
+
+def format_sources(sources: List[str]) -> str:
+    if not sources:
+        return ""
+    
+    sources_formatted = "\n\n---\n**📚 Sources: **\n" + "\n".join(f"- {s}" for s in sources)
+    return sources_formatted
+
 ### Retrieval Grader ###
 
 # Instructions
@@ -93,17 +133,6 @@ You are an assistant specializing in question-answering based on provided docume
 
 **Final Answer:** 
 """
-
-def format_docs(docs: List[Document]) -> str:
-    return "\n\n".join(doc.page_content for doc in docs)
-
-def clean_response(response: Dict[str, Any]) -> Dict[str, Any]:
-    match = re.search(r'```json(.*?)```', response.content, re.DOTALL)
-    if match:
-        cleaned_response = match.group(1).strip()
-        response.content = cleaned_response
-    return response
-
 
 ### Answer Grader ###
 
@@ -176,6 +205,11 @@ def generate(state : GraphState):
     docs_txt = format_docs(documents)
     rag_prompt_formatted = rag_prompt.format(context=docs_txt, question=question)
     generation = llm.invoke([HumanMessage(content=rag_prompt_formatted)])
+
+    # Append sources to generation
+    sources = extract_sources(documents)
+    generation.content += format_sources(sources)
+    
     print(generation)
     return {"messages" : [generation], "loop_step" : loop_step+1}
 
