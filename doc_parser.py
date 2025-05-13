@@ -333,7 +333,7 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
     
     # Saving detected languages
     config = load_json(CONFIG_FILE)
-    config["lanugages"] = languages
+    config["languages"] = languages
     save_json(CONFIG_FILE, config)
 
     return documents, languages
