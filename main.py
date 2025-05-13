@@ -58,7 +58,7 @@ def create_session_var(var_name: str, var_value: Any) -> bool:
     if var_name not in st.session_state:
         setattr(st.session_state, var_name, var_value)
         return True
-    
+
     return False
 
 # Intialize session_state variables
@@ -172,18 +172,20 @@ with st.sidebar:
         extension_files = st.file_uploader("📂 Upload Files to Extend Vectorstore", type=["pdf", "txt", "pptx", "docx", "HTML", "xls"], accept_multiple_files=True, key="extend_uploader")
         # Upload urls one by one
         st.text_input(label="🔗 Upload URLs here", key="widget2", placeholder="Enter URLs (one per line)",
-                             on_change=submit)
-        file_paths = []
+                             on_change=submit2)
+        extend_file_paths = []
         
         extend_vector_store_btn = st.button("📌 Extend Vector Store")
         if extend_vector_store_btn and st.session_state.vectorstore_created:
+
             if extension_files:
                 temp_dir = tempfile.gettempdir()
-                file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in extension_files]
-                for uploaded_file, file_path in zip(extension_files, file_paths):
+                extend_file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in extension_files]
+                for uploaded_file, file_path in zip(extension_files, extend_file_paths):
                     with open(file_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
-
+			
+            if extension_files or st.session_state.extend_urls:
                 config = load_json(CONFIG_FILE)
                 recent_llm = list(config.get("llm_model", {}).keys())[0]
                 if "gpt" not in recent_llm:
@@ -192,7 +194,7 @@ with st.sidebar:
                 st.session_state.multi_vector_store = extend_multi_vector_store(
                     st.session_state.multi_vector_store,
                     llm_model_name=recent_llm,
-                    file_paths=file_paths,
+                    file_paths=extend_file_paths,
                     urls=st.session_state.extend_urls,
                     parsing_method=config.get("parsing_method", "local")
                 )
@@ -200,7 +202,7 @@ with st.sidebar:
                 st.session_state.vectorstore_extended = True
                 st.success("✅ Vectorstore extended successfully!")
             else:
-                st.warning("⚠️ Please upload files to extend the vectorstore.")
+                st.warning("⚠️ Please upload files or urls to extend the vectorstore.")
         if extend_vector_store_btn and not st.session_state.vectorstore_created:
             st.warning("⚠️ Please create a vector store or load an already existing one before trying to extend.")
 
