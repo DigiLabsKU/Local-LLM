@@ -106,8 +106,40 @@ with st.sidebar:
         st.text_input(label="🔗 Upload URLs here", key="widget", placeholder="Enter URLs (one per line)",
                              on_change=submit)
         file_paths = []
-    
-    elif vectorstore_action == "Load Existing Vectorstore":
+        
+        if st.button("⚡ Create Vectorstore"):
+            config["llm_model"] = {selected_llm_model: available_models["llm_models"][selected_llm_model]}
+            config["embeddings_model"] = {selected_embeddings_model: available_models["embeddings_models"][selected_embeddings_model]}
+            config["parsing_method"] = selected_parsing_method
+            if "gpt" not in selected_llm_model:
+                selected_llm_model = available_models["llm_models"][selected_llm_model]["huggingface"]
+            
+            if uploaded_files:
+                st.write("📄 Processing uploaded files...")
+                temp_dir = tempfile.gettempdir()
+                file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in uploaded_files]
+                for uploaded_file, file_path in zip(uploaded_files, file_paths):
+                    with open(file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                config["file_paths"] = file_paths
+            
+            save_json(CONFIG_FILE, config)
+
+            if uploaded_files or st.session_state.uploaded_urls:
+                st.session_state.multi_vector_store = vectorstore_pipeline(
+                        embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
+                        llm_model_name=selected_llm_model,
+                        file_paths=file_paths if file_paths else [],
+                        urls=list(st.session_state.uploaded_urls),
+                        parsing_method=selected_parsing_method,
+                        use_gpu=False
+                    )
+                st.session_state.vectorstore_created = True
+                st.success(f"✅ {st.session_state.multi_vector_store.num_vectorstores()} Vectorstore(s) created successfully!")
+            else:
+                st.warning("⚠️ Please upload PDFs or URLs before creating a vectorstore.")
+
+    if vectorstore_action == "Load Existing Vectorstore":
         recent_llm = list(config.get("llm_model", {}).keys())[0]
         recent_embeddings = config.get("embeddings_model", {}).get(st.session_state.embeddings_model, "")
         
@@ -115,39 +147,6 @@ with st.sidebar:
         st.write(f"🔹 **Embeddings Model:** {recent_embeddings}")
         uploaded_files = None
 
-    if vectorstore_action == "Create Vectorstore" and st.button("⚡ Create Vectorstore"):
-        config["llm_model"] = {selected_llm_model: available_models["llm_models"][selected_llm_model]}
-        config["embeddings_model"] = {selected_embeddings_model: available_models["embeddings_models"][selected_embeddings_model]}
-        config["parsing_method"] = selected_parsing_method
-        if "gpt" not in selected_llm_model:
-            selected_llm_model = available_models["llm_models"][selected_llm_model]["huggingface"]
-        
-        if uploaded_files:
-            st.write("📄 Processing uploaded files...")
-            temp_dir = tempfile.gettempdir()
-            file_paths = [os.path.join(temp_dir, uploaded_file.name) for uploaded_file in uploaded_files]
-            for uploaded_file, file_path in zip(uploaded_files, file_paths):
-                with open(file_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-            config["file_paths"] = file_paths
-        
-        save_json(CONFIG_FILE, config)
-
-        if uploaded_files or st.session_state.uploaded_urls:
-            st.session_state.multi_vector_store = vectorstore_pipeline(
-                    embeddings_model_name=available_models["embeddings_models"][selected_embeddings_model],
-                    llm_model_name=selected_llm_model,
-                    file_paths=file_paths if file_paths else [],
-                    urls=list(st.session_state.uploaded_urls),
-                    parsing_method=selected_parsing_method,
-                    use_gpu=False
-                )
-            st.session_state.vectorstore_created = True
-            st.success(f"✅ {st.session_state.multi_vector_store.num_vectorstores()} Vectorstore(s) created successfully!")
-        else:
-            st.warning("⚠️ Please upload PDFs or URLs before creating a vectorstore.")
-
-    if vectorstore_action == "Load Existing Vectorstore":
         load_btn = st.button("⚡ Load Vectorstore", disabled=st.session_state.vectorstore_created)
 
         if not st.session_state.vectorstore_created and load_btn:
@@ -162,7 +161,6 @@ with st.sidebar:
                 st.success(f"✅ Loaded existing {st.session_state.multi_vector_store.num_vectorstores()} vectorstore(s) successfully!")
             except FileNotFoundError:
                 st.error("❌ Vectorstore not found. Please create a vectorstore first.")
-
 
     # If already created/loaded, extend the vectorstore
     if vectorstore_action == "Extend Vectorstore":
