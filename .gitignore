@@ -1,4 +1,4 @@
 vector_stores/
 data/
 config.json
-
+__pycache__
