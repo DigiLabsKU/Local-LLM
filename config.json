@@ -1,0 +1,38 @@
+{
+    "llm_model": {
+        "phi-4": {
+            "ollama": "phi4",
+            "huggingface": "microsoft/phi-4"
+        }
+    },
+    "embeddings_model": {
+        "large": "intfloat/multilingual-e5-large-instruct"
+    },
+    "load_exising_vectorstore": true,
+    "parsing_method": "local",
+    "languages": [
+        "en"
+    ],
+    "lanugages": [
+        "pl",
+        "da",
+        "no",
+        "en",
+        "cy"
+    ],
+    "file_paths": [
+        "/tmp/Bj\u00f6rneborn 2001 Small-World Linkage and Co-Linkage - ACM Hypertext.pdf",
+        "/tmp/Bj\u00f6rneborn 2005 Small-world_network_exploration.pdf",
+        "/tmp/Bj\u00f6rneborn 2006 Mini small worlds of shortest link paths.pdf",
+        "/tmp/Bj\u00f6rneborn 2008 Informationresearch Serendipity dimensions and users\u2019 information behaviour in the physical library interface.htm",
+        "/tmp/Bj\u00f6rneborn 2010 Design dimensions enabling divergent behaviour across physical, digital, and social library interfaces.pdf",
+        "/tmp/Bj\u00f6rneborn 2011 Behavioural traces and indirect user-to-user mediation in the participatory library.pdf",
+        "/tmp/Bj\u00f6rneborn 2017 preprint - Three key affordances for serendipity.pdf",
+        "/tmp/Bj\u00f6rneborn 2019 poster - Writing haiku poetry as a reflection tool in research - A case of arts-informed research on serendipity.pdf",
+        "/tmp/Bj\u00f6rneborn 2020 Adjacent Possible.pdf",
+        "/tmp/Bj\u00f6rneborn 2022 NoP-conference-notes-slides.pdf",
+        "/tmp/Bj\u00f6rneborn & Ingwersen 2001 Perspectives on webometrics.pdf",
+        "/tmp/Bj\u00f6rneborn & Ingwersen 2004 Toward a basic framework for webometrics.pdf",
+        "/tmp/Bogers & Bj\u00f6rneborn 2013 -preprint- Micro-serendipity.pdf"
+    ]
+}

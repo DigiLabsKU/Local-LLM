@@ -138,7 +138,7 @@ class CustomMultiVectorStore:
         """
 
         if lang in self.vectorstores:
-            retriever = self.vectorstores[lang].as_retriever(search_type="similarity", search_kwargs={'k': k})
+            retriever = self.vectorstores[lang].as_retriever(search_type="similarity")
             results = retriever.invoke(query)
             return results
         else:

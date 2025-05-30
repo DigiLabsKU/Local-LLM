@@ -314,6 +314,7 @@ def parse_pipeline(model_name:str, files: List[str], urls: List[str]=[], parsing
     
     # Parse files
     for fp in files:
+        print(f"Parsing file: {fp}\n")
         f_docs, file_langs = _parse_single_file(fp, languages=languages, token_fn=token_fn, parsing_method=parsing_method)
         documents.extend(f_docs)
         languages = file_langs

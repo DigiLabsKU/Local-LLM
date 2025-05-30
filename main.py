@@ -192,7 +192,8 @@ with st.sidebar:
                 st.session_state.multi_vector_store = extend_multi_vector_store(
                     st.session_state.multi_vector_store,
                     llm_model_name=recent_llm,
-                    file_paths=extend_file_paths,
+                    file_paths=file_paths,
+
                     urls=st.session_state.extend_urls,
                     parsing_method=config.get("parsing_method", "local")
                 )
